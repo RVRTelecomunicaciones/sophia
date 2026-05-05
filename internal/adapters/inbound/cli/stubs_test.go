@@ -11,8 +11,6 @@ import (
 func TestStubsAnnounceMilestone(t *testing.T) {
 	cases := map[string]string{
 		"init":    "M3",
-		"start":   "M2",
-		"stop":    "M2",
 		"run":     "M4",
 		"attach":  "M8",
 		"status":  "M3",

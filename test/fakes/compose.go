@@ -1,13 +1,19 @@
 package fakes
 
-import "context"
+import (
+	"context"
+	"sync"
+)
 
 type FakeComposeRunner struct {
-	ComposeVersion string
-	UpErr          error
-	DownErr        error
-	UpCalls        int
-	DownCalls      int
+	mu              sync.Mutex
+	ComposeVersion  string
+	UpErr           error
+	DownErr         error
+	UpCalls         int
+	DownCalls       int
+	LastComposePath string
+	LastProjectName string
 }
 
 func NewFakeComposeRunner() *FakeComposeRunner {
@@ -18,12 +24,20 @@ func (f *FakeComposeRunner) Version(_ context.Context) (string, error) {
 	return f.ComposeVersion, nil
 }
 
-func (f *FakeComposeRunner) Up(_ context.Context, _, _ string) error {
+func (f *FakeComposeRunner) Up(_ context.Context, composePath, projectName string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
 	f.UpCalls++
+	f.LastComposePath = composePath
+	f.LastProjectName = projectName
 	return f.UpErr
 }
 
-func (f *FakeComposeRunner) Down(_ context.Context, _, _ string) error {
+func (f *FakeComposeRunner) Down(_ context.Context, composePath, projectName string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
 	f.DownCalls++
+	f.LastComposePath = composePath
+	f.LastProjectName = projectName
 	return f.DownErr
 }

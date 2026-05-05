@@ -117,13 +117,9 @@ func (d *DoctorService) checkXDG() Check {
 
 func isComposeV2(version string) bool {
 	low := strings.ToLower(version)
-	// Must mention "compose version" to distinguish from other tools
-	idx := strings.Index(low, "compose version")
-	if idx < 0 {
+	_, suffix, found := strings.Cut(low, "compose version")
+	if !found {
 		return false
 	}
-	// Look for a version token starting with 'v' after "compose version "
-	suffix := low[idx+len("compose version"):]
-	suffix = strings.TrimSpace(suffix)
-	return strings.HasPrefix(suffix, "v2")
+	return strings.HasPrefix(strings.TrimSpace(suffix), "v2")
 }

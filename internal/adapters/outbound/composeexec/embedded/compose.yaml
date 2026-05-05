@@ -1,0 +1,48 @@
+# Sophia local dev stack — V1 stub.
+# Labeled with sophia.profile: stub so docker-compose listings make the
+# difference visible at a glance. See docs §3.6.
+services:
+  sophia-orchestator:
+    image: ghcr.io/rvrtelecomunicaciones/sophia-orchestator:dev
+    container_name: sophia-orchestator
+    labels:
+      sophia.stack: "dev"
+      sophia.profile: "stub"
+    ports:
+      - "9080:9080"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:9080/api/v1/healthz"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+    restart: unless-stopped
+
+  agent-governance-core:
+    image: ghcr.io/rvrtelecomunicaciones/agent-governance-core:dev
+    container_name: agent-governance-core
+    labels:
+      sophia.stack: "dev"
+      sophia.profile: "stub"
+    ports:
+      - "9081:9081"
+    restart: unless-stopped
+
+  sophia-memory-engine:
+    image: ghcr.io/rvrtelecomunicaciones/sophia-memory-engine:dev
+    container_name: sophia-memory-engine
+    labels:
+      sophia.stack: "dev"
+      sophia.profile: "stub"
+    ports:
+      - "9082:9082"
+    restart: unless-stopped
+
+  sophia-runtime-adapters:
+    image: ghcr.io/rvrtelecomunicaciones/sophia-runtime-adapters:dev
+    container_name: sophia-runtime-adapters
+    labels:
+      sophia.stack: "dev"
+      sophia.profile: "stub"
+    ports:
+      - "9083:9083"
+    restart: unless-stopped

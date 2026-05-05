@@ -17,7 +17,7 @@ type doctorM2Deps struct {
 	SSE     *fakes.FakeSSEProber
 }
 
-func newDoctorM2(opts ...func(*doctorM2Deps)) (*application.DoctorService, *doctorM2Deps) {
+func newDoctorM2(opts ...func(*doctorM2Deps)) (*application.DoctorService, *doctorM2Deps) { //nolint:unparam // opts variadic matches the functional-options pattern used across all fake constructors
 	d := &doctorM2Deps{
 		Compose: fakes.NewFakeComposeRunner(),
 		Git:     fakes.NewFakeGitInspector(),

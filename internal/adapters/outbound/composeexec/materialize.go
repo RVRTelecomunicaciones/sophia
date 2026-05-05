@@ -94,7 +94,7 @@ func hashBytes(b []byte) string {
 }
 
 func writeFile0644(p string, b []byte) error {
-	return os.WriteFile(p, b, 0o644)
+	return os.WriteFile(p, b, 0o644) //nolint:gosec // compose files must be readable by the docker daemon process
 }
 
 func readMeta(p string) (composeMeta, error) {

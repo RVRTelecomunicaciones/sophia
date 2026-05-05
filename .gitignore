@@ -1,0 +1,19 @@
+# binaries
+/bin/
+*.exe
+*.test
+*.out
+cover.out
+coverage.html
+
+# IDE
+.idea/
+.vscode/
+*.swp
+
+# OS
+.DS_Store
+Thumbs.db
+
+# logs (local state writes go to $XDG_STATE_HOME, not the repo)
+logs/

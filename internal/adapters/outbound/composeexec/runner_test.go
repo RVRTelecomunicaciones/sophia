@@ -25,3 +25,17 @@ func TestComposeExecVersionRunsBinary(t *testing.T) {
 		t.Error("expected non-empty output")
 	}
 }
+
+func TestUpRequiresProjectName(t *testing.T) {
+	r := composeexec.New(composeexec.Config{DockerBinary: "echo"})
+	if err := r.Up(context.Background(), "/p/compose.yaml", ""); err == nil {
+		t.Error("expected error for empty project name")
+	}
+}
+
+func TestDownRequiresComposePath(t *testing.T) {
+	r := composeexec.New(composeexec.Config{DockerBinary: "echo"})
+	if err := r.Down(context.Background(), "", "sophia"); err == nil {
+		t.Error("expected error for empty compose path")
+	}
+}

@@ -7,7 +7,9 @@ import (
 )
 
 type Deps struct {
-	Doctor    *application.DoctorService
+	Doctor      *application.DoctorService
+	Provisioner *application.Provisioner
+
 	Version   string
 	Commit    string
 	BuildDate string
@@ -29,7 +31,7 @@ state.`,
 	root.AddCommand(newVersionCmd(d))
 	root.AddCommand(newDoctorCmd(d))
 	root.AddCommand(newStubCmd("init", "Initialize .sophia.yaml at the resolved repo root", "M3"))
-	root.AddCommand(newStubCmd("start", "Start the local Sophia stack via docker compose", "M2"))
+	root.AddCommand(newStartCmd(d))
 	root.AddCommand(newStubCmd("stop", "Stop the local Sophia stack", "M2"))
 	root.AddCommand(newStubCmd("run", "Create and observe a Change", "M4"))
 	root.AddCommand(newStubCmd("attach", "Attach to an existing Change", "M8"))

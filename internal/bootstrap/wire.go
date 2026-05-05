@@ -10,6 +10,7 @@ import (
 	"github.com/RVRTelecomunicaciones/sophia-cli/internal/adapters/inbound/cli"
 	"github.com/RVRTelecomunicaciones/sophia-cli/internal/adapters/outbound/composeexec"
 	"github.com/RVRTelecomunicaciones/sophia-cli/internal/adapters/outbound/gitcli"
+	"github.com/RVRTelecomunicaciones/sophia-cli/internal/adapters/outbound/xdgpaths"
 	"github.com/RVRTelecomunicaciones/sophia-cli/internal/application"
 )
 
@@ -33,12 +34,24 @@ func New(cfg Config) (*cobra.Command, error) {
 		// Paths/Orch/SSE wired in M2 Task 16 (bootstrap rewiring)
 	})
 
+	paths := xdgpaths.New(xdgpaths.Config{})
+	provisioner := application.NewProvisioner(application.ProvisionerDeps{
+		Compose: compose,
+		Paths:   paths,
+		Materialize: func(dataRoot string, embed []byte, reset bool) (string, bool, error) {
+			res, err := composeexec.Materialize(dataRoot, embed, reset)
+			return res.Path, res.Wrote, err
+		},
+		Embedded: composeexec.EmbeddedComposeYAML,
+	})
+
 	info := NewVersionInfo()
 	deps := cli.Deps{
-		Doctor:    doctor,
-		Version:   info.Version,
-		Commit:    info.Commit,
-		BuildDate: info.BuildDate,
+		Doctor:      doctor,
+		Provisioner: provisioner,
+		Version:     info.Version,
+		Commit:      info.Commit,
+		BuildDate:   info.BuildDate,
 	}
 	return cli.NewRoot(deps), nil
 }

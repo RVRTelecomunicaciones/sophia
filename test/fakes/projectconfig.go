@@ -10,8 +10,9 @@ import (
 )
 
 type FakeProjectConfigStore struct {
-	mu    sync.Mutex
-	store map[string]*domain.ProjectConfig
+	mu      sync.Mutex
+	store   map[string]*domain.ProjectConfig
+	ReadErr error
 }
 
 func NewFakeProjectConfigStore() *FakeProjectConfigStore {
@@ -21,6 +22,9 @@ func NewFakeProjectConfigStore() *FakeProjectConfigStore {
 func (s *FakeProjectConfigStore) Read(_ context.Context, path string) (*domain.ProjectConfig, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if s.ReadErr != nil {
+		return nil, s.ReadErr
+	}
 	cfg, ok := s.store[path]
 	if !ok {
 		return nil, domain.ErrConfigMissing

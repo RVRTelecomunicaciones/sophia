@@ -10,10 +10,8 @@ import (
 
 func TestStubsAnnounceMilestone(t *testing.T) {
 	cases := map[string]string{
-		"init":    "M3",
 		"run":     "M4",
 		"attach":  "M8",
-		"status":  "M3",
 		"changes": "M8",
 	}
 	for sub, milestone := range cases {

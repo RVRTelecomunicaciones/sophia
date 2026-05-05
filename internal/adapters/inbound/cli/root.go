@@ -7,8 +7,10 @@ import (
 )
 
 type Deps struct {
-	Doctor      *application.DoctorService
-	Provisioner *application.Provisioner
+	Doctor       *application.DoctorService
+	Provisioner  *application.Provisioner
+	Initializer  *application.Initializer
+	StatusReader *application.StatusReader
 
 	Version   string
 	Commit    string
@@ -30,12 +32,12 @@ state.`,
 
 	root.AddCommand(newVersionCmd(d))
 	root.AddCommand(newDoctorCmd(d))
-	root.AddCommand(newStubCmd("init", "Initialize .sophia.yaml at the resolved repo root", "M3"))
+	root.AddCommand(newInitCmd(d))
 	root.AddCommand(newStartCmd(d))
 	root.AddCommand(newStopCmd(d))
 	root.AddCommand(newStubCmd("run", "Create and observe a Change", "M4"))
 	root.AddCommand(newStubCmd("attach", "Attach to an existing Change", "M8"))
-	root.AddCommand(newStubCmd("status", "Show status of a Change", "M3"))
+	root.AddCommand(newStatusCmd(d))
 	root.AddCommand(newStubCmd("changes", "List recent Changes", "M8"))
 
 	return root

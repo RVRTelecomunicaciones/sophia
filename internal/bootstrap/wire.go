@@ -27,8 +27,11 @@ func New(cfg Config) (*cobra.Command, error) {
 
 	compose := composeexec.New(composeexec.Config{})
 	git := gitcli.New(gitcli.Config{})
-	xdg := newXDGValidator()
-	doctor := application.NewDoctorService(compose, git, xdg)
+	doctor := application.NewDoctorService(application.DoctorDeps{
+		Compose: compose,
+		Git:     git,
+		// Paths/Orch/SSE wired in M2 Task 16 (bootstrap rewiring)
+	})
 
 	info := NewVersionInfo()
 	deps := cli.Deps{
@@ -38,10 +41,4 @@ func New(cfg Config) (*cobra.Command, error) {
 		BuildDate: info.BuildDate,
 	}
 	return cli.NewRoot(deps), nil
-}
-
-func newXDGValidator() application.XDGValidator {
-	return func(_ string) error {
-		return nil
-	}
 }

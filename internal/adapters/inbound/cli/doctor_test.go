@@ -12,9 +12,14 @@ import (
 )
 
 func newDoctorDeps() cli.Deps {
-	xdg := func(_ string) error { return nil }
 	return cli.Deps{
-		Doctor: application.NewDoctorService(fakes.NewFakeComposeRunner(), fakes.NewFakeGitInspector(), xdg),
+		Doctor: application.NewDoctorService(application.DoctorDeps{
+			Compose: fakes.NewFakeComposeRunner(),
+			Git:     fakes.NewFakeGitInspector(),
+			Paths:   fakes.NewFakePathResolver(),
+			Orch:    fakes.NewFakeOrchestrator(),
+			SSE:     fakes.NewFakeSSEProber(),
+		}),
 	}
 }
 

@@ -16,16 +16,18 @@ func TestNewProducesRoot(t *testing.T) {
 	}
 }
 
-func TestNewWiresDoctor(t *testing.T) {
+func TestNewWiresM2Commands(t *testing.T) {
 	root, err := bootstrap.New(bootstrap.Config{LogWriter: nil})
 	if err != nil {
 		t.Fatal(err)
 	}
-	doctor, _, err := root.Find([]string{"doctor"})
-	if err != nil {
-		t.Fatalf("doctor not found: %v", err)
-	}
-	if doctor == nil {
-		t.Fatal("doctor cmd is nil")
+	for _, sub := range []string{"doctor", "start", "stop", "version"} {
+		c, _, err := root.Find([]string{sub})
+		if err != nil {
+			t.Errorf("%s not found: %v", sub, err)
+		}
+		if c == nil {
+			t.Errorf("%s cmd is nil", sub)
+		}
 	}
 }

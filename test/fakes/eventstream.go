@@ -27,7 +27,7 @@ func (s *FakeEventStream) Subscribe(_ context.Context, target outbound.StreamTar
 	ch := make(chan domain.Event, 16)
 	s.subscribers[key(target)] = append(s.subscribers[key(target)], ch)
 	var once sync.Once
-	cancel := func() error {
+	cancel := func() error { //nolint:unparam // returns error to satisfy outbound.CancelFunc contract; always nil in fake
 		once.Do(func() {
 			s.mu.Lock()
 			defer s.mu.Unlock()

@@ -26,7 +26,7 @@ func New(cfg Config) *Inspector {
 
 func (g *Inspector) run(ctx context.Context, cwd string, args ...string) (string, error) {
 	var out bytes.Buffer
-	cmd := exec.CommandContext(ctx, g.cfg.Binary, args...)
+	cmd := exec.CommandContext(ctx, g.cfg.Binary, args...) //nolint:gosec // Binary is operator-supplied config, not user input
 	if cwd != "" {
 		cmd.Dir = cwd
 	}

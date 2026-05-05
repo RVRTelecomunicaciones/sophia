@@ -31,7 +31,7 @@ func (r *Runner) Version(ctx context.Context) (string, error) {
 		args = []string{"compose", "version"}
 	}
 	var out bytes.Buffer
-	cmd := exec.CommandContext(ctx, r.cfg.DockerBinary, args...)
+	cmd := exec.CommandContext(ctx, r.cfg.DockerBinary, args...) //nolint:gosec // DockerBinary is operator-supplied config, not user input
 	cmd.Stdout = &out
 	cmd.Stderr = &out
 	if err := cmd.Run(); err != nil {
@@ -44,7 +44,7 @@ func (r *Runner) Up(ctx context.Context, composePath, projectName string) error 
 	if composePath == "" || projectName == "" {
 		return errors.New("composePath and projectName are required")
 	}
-	cmd := exec.CommandContext(ctx, r.cfg.DockerBinary, "compose", "-p", projectName, "-f", composePath, "up", "-d")
+	cmd := exec.CommandContext(ctx, r.cfg.DockerBinary, "compose", "-p", projectName, "-f", composePath, "up", "-d") //nolint:gosec // DockerBinary is operator-supplied config, not user input
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("compose up: %w (output: %s)", err, out)
@@ -56,7 +56,7 @@ func (r *Runner) Down(ctx context.Context, composePath, projectName string) erro
 	if composePath == "" || projectName == "" {
 		return errors.New("composePath and projectName are required")
 	}
-	cmd := exec.CommandContext(ctx, r.cfg.DockerBinary, "compose", "-p", projectName, "-f", composePath, "down")
+	cmd := exec.CommandContext(ctx, r.cfg.DockerBinary, "compose", "-p", projectName, "-f", composePath, "down") //nolint:gosec // DockerBinary is operator-supplied config, not user input
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("compose down: %w (output: %s)", err, out)

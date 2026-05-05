@@ -9,10 +9,12 @@ import (
 
 	"github.com/RVRTelecomunicaciones/sophia-cli/internal/adapters/inbound/cli"
 	"github.com/RVRTelecomunicaciones/sophia-cli/internal/adapters/outbound/composeexec"
+	"github.com/RVRTelecomunicaciones/sophia-cli/internal/adapters/outbound/filestate"
 	"github.com/RVRTelecomunicaciones/sophia-cli/internal/adapters/outbound/gitcli"
 	"github.com/RVRTelecomunicaciones/sophia-cli/internal/adapters/outbound/orchestratorhttp"
 	"github.com/RVRTelecomunicaciones/sophia-cli/internal/adapters/outbound/sseprobe"
 	"github.com/RVRTelecomunicaciones/sophia-cli/internal/adapters/outbound/xdgpaths"
+	"github.com/RVRTelecomunicaciones/sophia-cli/internal/adapters/outbound/yamlconfig"
 	"github.com/RVRTelecomunicaciones/sophia-cli/internal/application"
 )
 
@@ -58,13 +60,33 @@ func New(cfg Config) (*cobra.Command, error) {
 		Embedded: composeexec.EmbeddedComposeYAML,
 	})
 
+	// Resolve XDG paths once for state-aware adapters. Errors here mean
+	// the binary still works for read-only commands; init/status will
+	// re-resolve and fail with a clearer message.
+	xdg, _ := paths.Resolve()
+
+	projectStore := yamlconfig.NewProjectStore(yamlconfig.ProjectConfig{})
+	state := filestate.New(filestate.Config{StateRoot: xdg.StateRoot})
+
+	initializer := application.NewInitializer(application.InitializerDeps{
+		Git:          git,
+		ProjectStore: projectStore,
+	})
+	statusReader := application.NewStatusReader(application.StatusDeps{
+		State:        state,
+		Git:          git,
+		ProjectStore: projectStore,
+	})
+
 	info := NewVersionInfo()
 	deps := cli.Deps{
-		Doctor:      doctor,
-		Provisioner: provisioner,
-		Version:     info.Version,
-		Commit:      info.Commit,
-		BuildDate:   info.BuildDate,
+		Doctor:       doctor,
+		Provisioner:  provisioner,
+		Initializer:  initializer,
+		StatusReader: statusReader,
+		Version:      info.Version,
+		Commit:       info.Commit,
+		BuildDate:    info.BuildDate,
 	}
 	return cli.NewRoot(deps), nil
 }

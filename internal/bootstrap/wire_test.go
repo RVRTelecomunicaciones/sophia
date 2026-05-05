@@ -31,3 +31,19 @@ func TestNewWiresM2Commands(t *testing.T) {
 		}
 	}
 }
+
+func TestNewWiresM3Commands(t *testing.T) {
+	root, err := bootstrap.New(bootstrap.Config{LogWriter: nil})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, sub := range []string{"init", "status"} {
+		c, _, err := root.Find([]string{sub})
+		if err != nil {
+			t.Errorf("%s not found: %v", sub, err)
+		}
+		if c == nil {
+			t.Errorf("%s cmd is nil", sub)
+		}
+	}
+}

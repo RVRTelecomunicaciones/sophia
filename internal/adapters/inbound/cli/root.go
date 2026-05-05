@@ -32,7 +32,7 @@ state.`,
 	root.AddCommand(newDoctorCmd(d))
 	root.AddCommand(newStubCmd("init", "Initialize .sophia.yaml at the resolved repo root", "M3"))
 	root.AddCommand(newStartCmd(d))
-	root.AddCommand(newStubCmd("stop", "Stop the local Sophia stack", "M2"))
+	root.AddCommand(newStopCmd(d))
 	root.AddCommand(newStubCmd("run", "Create and observe a Change", "M4"))
 	root.AddCommand(newStubCmd("attach", "Attach to an existing Change", "M8"))
 	root.AddCommand(newStubCmd("status", "Show status of a Change", "M3"))

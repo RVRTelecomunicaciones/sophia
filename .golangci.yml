@@ -1,0 +1,39 @@
+run:
+  timeout: 3m
+  tests: true
+
+linters:
+  disable-all: true
+  enable:
+    - errcheck
+    - govet
+    - staticcheck
+    - revive
+    - gofmt
+    - goimports
+    - gosec
+    - unused
+    - unparam
+    - misspell
+    - ineffassign
+    - typecheck
+
+linters-settings:
+  revive:
+    rules:
+      - name: exported
+        arguments:
+          - disableStutteringCheck
+  gosec:
+    excludes:
+      - G104   # Errors unhandled (we use errcheck)
+
+issues:
+  exclude-rules:
+    - path: _test\.go
+      linters:
+        - gosec
+        - errcheck
+    - path: test/fakes/
+      linters:
+        - revive

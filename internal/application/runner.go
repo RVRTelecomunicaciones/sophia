@@ -157,14 +157,10 @@ func (r *Runner) Observe(ctx context.Context, res RunResult, sink inbound.EventS
 	return r.finishWithSink(ctx, res, final, sink)
 }
 
-// stream subscribes to the SSE feed for id and forwards events to the sink
-// until the channel closes (either graceful server close or retry budget
-// exhausted) or ctx is canceled. After the channel closes, it refreshes the
-// change snapshot to determine terminal status.
-func (r *Runner) stream(ctx context.Context, id domain.ChangeID) (domain.ChangeStatus, error) {
-	return r.streamWithSink(ctx, id, r.deps.Sink)
-}
-
+// streamWithSink subscribes to the SSE feed for id and forwards events to the
+// given sink until the channel closes (either graceful server close or retry
+// budget exhausted) or ctx is canceled. After the channel closes, it refreshes
+// the change snapshot to determine terminal status.
 func (r *Runner) streamWithSink(ctx context.Context, id domain.ChangeID, sink inbound.EventSink) (domain.ChangeStatus, error) {
 	ch, stop, err := r.deps.EventStream.Subscribe(ctx, outbound.StreamTarget{ChangeID: id}, outbound.SubscribeOptions{})
 	if err != nil {
@@ -185,14 +181,10 @@ func (r *Runner) streamWithSink(ctx context.Context, id domain.ChangeID, sink in
 	}
 }
 
-// dispatchEvent forwards a single event to the sink. Heartbeats are dropped
-// (defensive — the SSE client also filters them). Approval events get
-// translated into OnApprovalGate AND emitted via OnEvent (D-M5-02).
+// dispatchEventWithSink forwards a single event to the given sink. Heartbeats
+// are dropped (defensive — the SSE client also filters them). Approval events
+// get translated into OnApprovalGate AND emitted via OnEvent (D-M5-02).
 // OnEvent always fires first; OnApprovalGate follows for approval.required.
-func (r *Runner) dispatchEvent(ctx context.Context, ev domain.Event) {
-	r.dispatchEventWithSink(ctx, ev, r.deps.Sink)
-}
-
 func (r *Runner) dispatchEventWithSink(ctx context.Context, ev domain.Event, sink inbound.EventSink) {
 	if ev.Type == "heartbeat" {
 		return
@@ -228,13 +220,9 @@ func approvalGateFromEvent(ev domain.Event) domain.ApprovalGate {
 	return gate
 }
 
-// refreshAfterStreamEnd issues a final GetChange to determine terminal status.
-// Per D-M5-03 this is the only place mid-run snapshots happen — not on every
-// reconnect.
-func (r *Runner) refreshAfterStreamEnd(ctx context.Context, id domain.ChangeID) (domain.ChangeStatus, error) {
-	return r.refreshAfterStreamEndWithSink(ctx, id, r.deps.Sink)
-}
-
+// refreshAfterStreamEndWithSink issues a final GetChange to determine terminal
+// status and forwards the snapshot to the given sink. Per D-M5-03 this is the
+// only place mid-run snapshots happen — not on every reconnect.
 func (r *Runner) refreshAfterStreamEndWithSink(ctx context.Context, id domain.ChangeID, sink inbound.EventSink) (domain.ChangeStatus, error) {
 	rctx, cancel := context.WithTimeout(ctx, r.opts.SnapshotRefreshTimeout)
 	defer cancel()
@@ -251,10 +239,8 @@ func (r *Runner) refreshAfterStreamEndWithSink(ctx context.Context, id domain.Ch
 	return snap.Status, nil
 }
 
-func (r *Runner) finish(ctx context.Context, res RunResult, st domain.ChangeStatus) (RunResult, error) {
-	return r.finishWithSink(ctx, res, st, r.deps.Sink)
-}
-
+// finishWithSink emits OnComplete to the given sink and maps the terminal
+// status to the spec §2.3 ExitError code.
 func (r *Runner) finishWithSink(ctx context.Context, res RunResult, st domain.ChangeStatus, sink inbound.EventSink) (RunResult, error) {
 	res.FinalStatus = st
 	_ = sink.OnComplete(ctx, st)

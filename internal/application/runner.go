@@ -16,7 +16,7 @@ import (
 //	0 → terminal DONE
 //	1 → terminal BLOCKED/FAILED
 //	3 → config / orchestrator-unreachable / change-not-found
-//	4 → transient error (poll-loop ctx canceled, network mid-run)
+//	4 → transient error (stream ended without terminal, ctx canceled, retry budget exhausted)
 type ExitError struct {
 	Code int
 	Err  error
@@ -35,16 +35,19 @@ func (e *ExitError) Unwrap() error { return e.Err }
 
 // RunnerDeps groups the ports the Runner needs.
 type RunnerDeps struct {
-	Orch  outbound.OrchestratorClient
-	State outbound.StateStore
-	Git   outbound.GitInspector
-	Sink  inbound.EventSink
+	Orch        outbound.OrchestratorClient
+	State       outbound.StateStore
+	Git         outbound.GitInspector
+	Sink        inbound.EventSink
+	EventStream outbound.EventStreamClient
 }
 
-// RunnerOptions tunes the polling cadence.
+// RunnerOptions tunes the runner.
+//
+// SnapshotRefreshTimeout caps how long the post-stream GetChange may take
+// before the runner gives up and reports exit 4.
 type RunnerOptions struct {
-	PollMin time.Duration // default 1s
-	PollMax time.Duration // default 5s
+	SnapshotRefreshTimeout time.Duration
 }
 
 // RunInput controls Run.
@@ -61,7 +64,7 @@ type RunResult struct {
 	FinalStatus domain.ChangeStatus
 }
 
-// Runner orchestrates `sophia run` per spec §2.2 (polling-only V1 in M4).
+// Runner orchestrates `sophia run` per spec §2.2 (SSE-first in M5).
 type Runner struct {
 	deps RunnerDeps
 	opts RunnerOptions
@@ -69,16 +72,13 @@ type Runner struct {
 
 // NewRunner constructs a Runner.
 func NewRunner(d RunnerDeps, opts RunnerOptions) *Runner {
-	if opts.PollMin <= 0 {
-		opts.PollMin = time.Second
-	}
-	if opts.PollMax <= 0 {
-		opts.PollMax = 5 * time.Second
+	if opts.SnapshotRefreshTimeout <= 0 {
+		opts.SnapshotRefreshTimeout = 10 * time.Second
 	}
 	return &Runner{deps: d, opts: opts}
 }
 
-// Run creates a Change and observes it via polling until terminal status.
+// Run creates a Change and observes it via SSE until terminal status.
 // Returns RunResult and either nil (DONE) or *ExitError with the spec code.
 func (r *Runner) Run(ctx context.Context, in RunInput) (RunResult, error) {
 	if in.Message == "" {
@@ -86,6 +86,9 @@ func (r *Runner) Run(ctx context.Context, in RunInput) (RunResult, error) {
 	}
 	if in.Project == "" {
 		return RunResult{}, &ExitError{Code: 3, Err: errors.New("run: project not set")}
+	}
+	if r.deps.EventStream == nil {
+		return RunResult{}, &ExitError{Code: 3, Err: errors.New("run: event stream not wired")}
 	}
 	if in.ArtifactStore == "" {
 		in.ArtifactStore = domain.ArtifactStoreEngram
@@ -122,48 +125,96 @@ func (r *Runner) Run(ctx context.Context, in RunInput) (RunResult, error) {
 		return r.finish(ctx, res, created.Status)
 	}
 
-	final, err := r.poll(ctx, created.ID)
+	final, err := r.stream(ctx, created.ID)
 	if err != nil {
 		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
 			return res, &ExitError{Code: 4, Err: err}
 		}
 		_ = r.deps.Sink.OnError(ctx, err)
-		return res, &ExitError{Code: 3, Err: err}
+		return res, &ExitError{Code: 4, Err: err}
 	}
 	return r.finish(ctx, res, final)
 }
 
-// poll runs the GET-snapshot loop until terminal status.
-func (r *Runner) poll(ctx context.Context, id domain.ChangeID) (domain.ChangeStatus, error) {
-	delay := r.opts.PollMin
+// stream subscribes to the SSE feed for id and forwards events to the sink
+// until the channel closes (either graceful server close or retry budget
+// exhausted) or ctx is canceled. After the channel closes, it refreshes the
+// change snapshot to determine terminal status.
+func (r *Runner) stream(ctx context.Context, id domain.ChangeID) (domain.ChangeStatus, error) {
+	ch, stop, err := r.deps.EventStream.Subscribe(ctx, outbound.StreamTarget{ChangeID: id}, outbound.SubscribeOptions{})
+	if err != nil {
+		return "", fmt.Errorf("subscribe: %w", err)
+	}
+	defer stop() //nolint:errcheck
+
 	for {
 		select {
 		case <-ctx.Done():
 			return "", ctx.Err()
-		case <-time.After(delay):
-		}
-		snap, err := r.deps.Orch.GetChange(ctx, id)
-		if err != nil {
-			return "", err
-		}
-		if err := r.deps.Sink.OnSnapshot(ctx, snap); err != nil {
-			// Sink errors are non-fatal but emitted.
-			_ = r.deps.Sink.OnError(ctx, err)
-		}
-		if snap.Status.IsTerminal() {
-			return snap.Status, nil
-		}
-		// Exponential backoff up to PollMax. Cap at PollMax once reached.
-		if snap.CurrentPhaseID == "" {
-			delay *= 2
-			if delay > r.opts.PollMax {
-				delay = r.opts.PollMax
+		case ev, ok := <-ch:
+			if !ok {
+				return r.refreshAfterStreamEnd(ctx, id)
 			}
-		} else {
-			// Active phase → keep at PollMin.
-			delay = r.opts.PollMin
+			r.dispatchEvent(ctx, ev)
 		}
 	}
+}
+
+// dispatchEvent forwards a single event to the sink. Heartbeats are dropped
+// (defensive — the SSE client also filters them). Approval events get
+// translated into OnApprovalGate AND emitted via OnEvent (D-M5-02).
+func (r *Runner) dispatchEvent(ctx context.Context, ev domain.Event) {
+	if ev.Type == "heartbeat" {
+		return
+	}
+	if err := r.deps.Sink.OnEvent(ctx, ev); err != nil {
+		_ = r.deps.Sink.OnError(ctx, err)
+	}
+	if ev.Type == "approval.required" {
+		gate := approvalGateFromEvent(ev)
+		if err := r.deps.Sink.OnApprovalGate(ctx, gate); err != nil {
+			_ = r.deps.Sink.OnError(ctx, err)
+		}
+	}
+}
+
+// approvalGateFromEvent extracts an ApprovalGate from a redacted payload.
+// Missing fields default to zero values per the parser's tolerance rules.
+func approvalGateFromEvent(ev domain.Event) domain.ApprovalGate {
+	gate := domain.ApprovalGate{TraceID: ev.TraceID}
+	if ev.Payload == nil {
+		return gate
+	}
+	gate.URL, _ = ev.Payload["gate_url"].(string)
+	gate.Reason, _ = ev.Payload["reason"].(string)
+	gate.Risk, _ = ev.Payload["risk"].(string)
+	gate.Policy, _ = ev.Payload["policy"].(string)
+	if ph, ok := ev.Payload["phase"].(string); ok {
+		gate.Phase = domain.PhaseType(ph)
+	}
+	if cid, ok := ev.Payload["change_id"].(string); ok {
+		gate.ChangeID = domain.ChangeID(cid)
+	}
+	return gate
+}
+
+// refreshAfterStreamEnd issues a final GetChange to determine terminal status.
+// Per D-M5-03 this is the only place mid-run snapshots happen — not on every
+// reconnect.
+func (r *Runner) refreshAfterStreamEnd(ctx context.Context, id domain.ChangeID) (domain.ChangeStatus, error) {
+	rctx, cancel := context.WithTimeout(ctx, r.opts.SnapshotRefreshTimeout)
+	defer cancel()
+	snap, err := r.deps.Orch.GetChange(rctx, id)
+	if err != nil {
+		return "", fmt.Errorf("post-stream snapshot: %w", err)
+	}
+	if err := r.deps.Sink.OnSnapshot(ctx, snap); err != nil {
+		_ = r.deps.Sink.OnError(ctx, err)
+	}
+	if !snap.Status.IsTerminal() {
+		return "", fmt.Errorf("stream ended before terminal status (current=%q)", snap.Status)
+	}
+	return snap.Status, nil
 }
 
 func (r *Runner) finish(ctx context.Context, res RunResult, st domain.ChangeStatus) (RunResult, error) {

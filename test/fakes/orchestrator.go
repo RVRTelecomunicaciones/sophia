@@ -78,6 +78,17 @@ func (f *FakeOrchestrator) GetChange(ctx context.Context, id domain.ChangeID) (*
 	return &out, nil
 }
 
+// SetTerminal mutates a stored change to the given terminal status. Used
+// by runner tests to simulate "after the stream ended, GetChange returns
+// terminal".
+func (f *FakeOrchestrator) SetTerminal(id domain.ChangeID, st domain.ChangeStatus) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if c, ok := f.changes[id]; ok {
+		c.Status = st
+	}
+}
+
 func (f *FakeOrchestrator) ListChanges(_ context.Context, filter outbound.ListChangesFilter) ([]*domain.Change, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()

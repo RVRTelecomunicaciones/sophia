@@ -11,6 +11,9 @@ import (
 type FakeEventStream struct {
 	mu          sync.Mutex
 	subscribers map[string][]chan domain.Event
+	// OnSubscribe is called (in a goroutine) each time Subscribe is invoked.
+	// Tests use it to push events or close the stream after setup completes.
+	OnSubscribe func(outbound.StreamTarget)
 }
 
 func NewFakeEventStream() *FakeEventStream {
@@ -23,9 +26,13 @@ func key(t outbound.StreamTarget) string {
 
 func (s *FakeEventStream) Subscribe(_ context.Context, target outbound.StreamTarget, _ outbound.SubscribeOptions) (<-chan domain.Event, func() error, error) {
 	s.mu.Lock()
-	defer s.mu.Unlock()
 	ch := make(chan domain.Event, 16)
 	s.subscribers[key(target)] = append(s.subscribers[key(target)], ch)
+	hook := s.OnSubscribe
+	s.mu.Unlock()
+	if hook != nil {
+		go hook(target)
+	}
 	var once sync.Once
 	cancel := func() error { //nolint:unparam // returns error to satisfy outbound.CancelFunc contract; always nil in fake
 		once.Do(func() {
@@ -51,4 +58,14 @@ func (s *FakeEventStream) Push(target outbound.StreamTarget, ev domain.Event) {
 	for _, ch := range s.subscribers[key(target)] {
 		ch <- ev
 	}
+}
+
+// Close simulates a graceful server-side stream close for target.
+func (s *FakeEventStream) Close(target outbound.StreamTarget) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for _, ch := range s.subscribers[key(target)] {
+		close(ch)
+	}
+	s.subscribers[key(target)] = nil
 }

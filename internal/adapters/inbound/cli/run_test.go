@@ -5,17 +5,18 @@ import (
 	"context"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/RVRTelecomunicaciones/sophia-cli/internal/adapters/inbound/cli"
 	"github.com/RVRTelecomunicaciones/sophia-cli/internal/application"
 	"github.com/RVRTelecomunicaciones/sophia-cli/internal/domain"
+	"github.com/RVRTelecomunicaciones/sophia-cli/internal/ports/outbound"
 	"github.com/RVRTelecomunicaciones/sophia-cli/test/fakes"
 )
 
-func newRunDeps(t *testing.T, sinkBuf *bytes.Buffer) (cli.Deps, *fakes.FakeOrchestrator) {
+func newRunDeps(t *testing.T, sinkBuf *bytes.Buffer) (cli.Deps, *fakes.FakeOrchestrator, *fakes.FakeEventStream) {
 	t.Helper()
 	orch := fakes.NewFakeOrchestrator()
+	stream := fakes.NewFakeEventStream()
 	state := fakes.NewFakeStateStore()
 	git := fakes.NewFakeGitInspector()
 	pc := fakes.NewFakeProjectConfigStore()
@@ -33,15 +34,13 @@ func newRunDeps(t *testing.T, sinkBuf *bytes.Buffer) (cli.Deps, *fakes.FakeOrche
 	return cli.Deps{
 		Resolver: resolver,
 		Runner: application.NewRunner(application.RunnerDeps{
-			Orch:  orch,
-			State: state,
-			Git:   git,
-			Sink:  newTestSink(sinkBuf),
-		}, application.RunnerOptions{
-			PollMin: time.Millisecond,
-			PollMax: 5 * time.Millisecond,
-		}),
-	}, orch
+			Orch:        orch,
+			State:       state,
+			Git:         git,
+			Sink:        newTestSink(sinkBuf),
+			EventStream: stream,
+		}, application.RunnerOptions{}),
+	}, orch, stream
 }
 
 func newTestSink(w *bytes.Buffer) *testSink {
@@ -64,7 +63,7 @@ func (s *testSink) OnComplete(_ context.Context, st domain.ChangeStatus) error {
 func (s *testSink) Close() error { return nil }
 
 func TestRunCommandRequiresMessage(t *testing.T) {
-	deps, _ := newRunDeps(t, &bytes.Buffer{})
+	deps, _, _ := newRunDeps(t, &bytes.Buffer{})
 	c := cli.NewRoot(deps)
 	c.SetOut(&bytes.Buffer{})
 	c.SetErr(&bytes.Buffer{})
@@ -79,16 +78,15 @@ func TestRunCommandSucceedsWithMessage(t *testing.T) {
 	t.Setenv(application.EnvProject, "")
 	t.Setenv(application.EnvBaseRef, "")
 	var sinkBuf bytes.Buffer
-	deps, orch := newRunDeps(t, &sinkBuf)
-	first := true
-	orch.TickHook = func(c *domain.Change) {
-		if first {
-			c.Status = domain.ChangeStatusRunning
-			first = false
-		} else {
-			c.Status = domain.ChangeStatusDone
-		}
+	deps, orch, stream := newRunDeps(t, &sinkBuf)
+
+	stream.OnSubscribe = func(target outbound.StreamTarget) {
+		go func() {
+			orch.SetTerminal(target.ChangeID, domain.ChangeStatusDone)
+			stream.Close(target)
+		}()
 	}
+
 	c := cli.NewRoot(deps)
 	c.SetOut(&bytes.Buffer{})
 	c.SetArgs([]string{"run", "test message", "--no-tui", "--json"})
@@ -112,8 +110,14 @@ func TestRunCommandReturnsExitErrorOnFailure(t *testing.T) {
 	t.Setenv(application.EnvProject, "")
 	t.Setenv(application.EnvBaseRef, "")
 	var sinkBuf bytes.Buffer
-	deps, orch := newRunDeps(t, &sinkBuf)
-	orch.TickHook = func(c *domain.Change) { c.Status = domain.ChangeStatusFailed }
+	deps, orch, stream := newRunDeps(t, &sinkBuf)
+
+	stream.OnSubscribe = func(target outbound.StreamTarget) {
+		go func() {
+			orch.SetTerminal(target.ChangeID, domain.ChangeStatusFailed)
+			stream.Close(target)
+		}()
+	}
 
 	c := cli.NewRoot(deps)
 	c.SetOut(&bytes.Buffer{})

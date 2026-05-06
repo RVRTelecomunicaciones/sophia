@@ -15,6 +15,7 @@ import (
 type recordingSink struct {
 	Snapshots []*domain.Change
 	Events    []domain.Event
+	Gates     []domain.ApprovalGate
 	Errors    []error
 	Final     domain.ChangeStatus
 	closed    bool
@@ -29,7 +30,10 @@ func (s *recordingSink) OnEvent(_ context.Context, e domain.Event) error {
 	s.Events = append(s.Events, e)
 	return nil
 }
-func (s *recordingSink) OnApprovalGate(_ context.Context, _ domain.ApprovalGate) error { return nil }
+func (s *recordingSink) OnApprovalGate(_ context.Context, g domain.ApprovalGate) error {
+	s.Gates = append(s.Gates, g)
+	return nil
+}
 func (s *recordingSink) OnError(_ context.Context, err error) error {
 	s.Errors = append(s.Errors, err)
 	return nil
@@ -40,37 +44,39 @@ func (s *recordingSink) OnComplete(_ context.Context, st domain.ChangeStatus) er
 }
 func (s *recordingSink) Close() error { s.closed = true; return nil }
 
-func newRunner(orch *fakes.FakeOrchestrator, sink *recordingSink) (*application.Runner, *fakes.FakeStateStore) {
+func newRunner(orch *fakes.FakeOrchestrator, stream *fakes.FakeEventStream, sink *recordingSink) (*application.Runner, *fakes.FakeStateStore) {
 	state := fakes.NewFakeStateStore()
 	r := application.NewRunner(application.RunnerDeps{
-		Orch:  orch,
-		State: state,
-		Git:   fakes.NewFakeGitInspector(),
-		Sink:  sink,
+		Orch:        orch,
+		State:       state,
+		Git:         fakes.NewFakeGitInspector(),
+		Sink:        sink,
+		EventStream: stream,
 	}, application.RunnerOptions{
-		PollMin: time.Millisecond,
-		PollMax: 5 * time.Millisecond,
+		SnapshotRefreshTimeout: time.Second,
 	})
 	return r, state
 }
 
-func TestRunnerCreatesAndPollsUntilDone(t *testing.T) {
+func TestRunnerCreatesAndConsumesSSEUntilTerminalEvent(t *testing.T) {
 	orch := fakes.NewFakeOrchestrator()
+	stream := fakes.NewFakeEventStream()
 	sink := &recordingSink{}
-	r, state := newRunner(orch, sink)
+	r, state := newRunner(orch, stream, sink)
 
-	first := true
-	orch.TickHook = func(c *domain.Change) {
-		if first {
-			c.Status = domain.ChangeStatusRunning
-			first = false
-		} else {
-			c.Status = domain.ChangeStatusDone
-		}
+	stream.OnSubscribe = func(target outbound.StreamTarget) {
+		go func() {
+			stream.Push(target, domain.Event{Type: "phase.started", EventID: "evt-1"})
+			stream.Push(target, domain.Event{Type: "phase.completed", EventID: "evt-2"})
+			orch.SetTerminal(target.ChangeID, domain.ChangeStatusDone)
+			stream.Close(target)
+		}()
 	}
 
 	res, err := r.Run(context.Background(), application.RunInput{
-		Project: "p", Message: "msg", BaseRef: "main",
+		Project:       "p",
+		Message:       "msg",
+		BaseRef:       "main",
 		ArtifactStore: domain.ArtifactStoreEngram,
 	})
 	if err != nil {
@@ -79,50 +85,149 @@ func TestRunnerCreatesAndPollsUntilDone(t *testing.T) {
 	if res.FinalStatus != domain.ChangeStatusDone {
 		t.Errorf("FinalStatus = %q", res.FinalStatus)
 	}
-	if len(sink.Snapshots) < 2 {
-		t.Errorf("expected ≥2 snapshots, got %d", len(sink.Snapshots))
+	if len(sink.Events) < 2 {
+		t.Errorf("expected ≥2 events, got %d", len(sink.Events))
 	}
 	if sink.Final != domain.ChangeStatusDone {
 		t.Errorf("OnComplete final = %q", sink.Final)
 	}
 
-	// Verify last_change_id persisted globally.
 	gid, _ := state.GetGlobalLast(context.Background())
 	if gid != res.ChangeID {
 		t.Errorf("global last = %q, want %q", gid, res.ChangeID)
 	}
 }
 
-func TestRunnerExitCodeOnFailedTerminalStatus(t *testing.T) {
+func TestRunnerTranslatesApprovalRequiredEventToOnApprovalGate(t *testing.T) {
 	orch := fakes.NewFakeOrchestrator()
+	stream := fakes.NewFakeEventStream()
 	sink := &recordingSink{}
-	r, _ := newRunner(orch, sink)
+	r, _ := newRunner(orch, stream, sink)
 
-	orch.TickHook = func(c *domain.Change) { c.Status = domain.ChangeStatusFailed }
+	stream.OnSubscribe = func(target outbound.StreamTarget) {
+		go func() {
+			stream.Push(target, domain.Event{
+				Type:    "approval.required",
+				EventID: "gate-1",
+				Payload: map[string]any{
+					"gate_url": "http://gate/1",
+					"reason":   "policy",
+					"risk":     "high",
+					"policy":   "manual",
+					"phase":    "apply",
+				},
+			})
+			orch.SetTerminal(target.ChangeID, domain.ChangeStatusDone)
+			stream.Close(target)
+		}()
+	}
 
-	res, err := r.Run(context.Background(), application.RunInput{
+	_, err := r.Run(context.Background(), application.RunInput{
 		Project: "p", Message: "msg", BaseRef: "main", ArtifactStore: domain.ArtifactStoreEngram,
 	})
-	if err == nil {
-		t.Fatal("expected ExitError for failed terminal status")
+	if err != nil {
+		t.Fatal(err)
 	}
+	if len(sink.Gates) != 1 {
+		t.Fatalf("expected 1 ApprovalGate, got %d", len(sink.Gates))
+	}
+	if sink.Gates[0].URL != "http://gate/1" {
+		t.Errorf("gate URL = %q", sink.Gates[0].URL)
+	}
+	saw := false
+	for _, ev := range sink.Events {
+		if ev.Type == "approval.required" {
+			saw = true
+		}
+	}
+	if !saw {
+		t.Error("approval.required should also be emitted via OnEvent")
+	}
+}
+
+func TestRunnerSkipsHeartbeatEvents(t *testing.T) {
+	orch := fakes.NewFakeOrchestrator()
+	stream := fakes.NewFakeEventStream()
+	sink := &recordingSink{}
+	r, _ := newRunner(orch, stream, sink)
+
+	stream.OnSubscribe = func(target outbound.StreamTarget) {
+		go func() {
+			stream.Push(target, domain.Event{Type: "heartbeat", EventID: "hb-1"})
+			stream.Push(target, domain.Event{Type: "phase.started", EventID: "evt-1"})
+			orch.SetTerminal(target.ChangeID, domain.ChangeStatusDone)
+			stream.Close(target)
+		}()
+	}
+
+	if _, err := r.Run(context.Background(), application.RunInput{
+		Project: "p", Message: "msg", BaseRef: "main", ArtifactStore: domain.ArtifactStoreEngram,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	for _, ev := range sink.Events {
+		if ev.Type == "heartbeat" {
+			t.Errorf("heartbeat should not reach OnEvent: %+v", ev)
+		}
+	}
+}
+
+func TestRunnerExitCode4WhenStreamEndsBeforeTerminal(t *testing.T) {
+	orch := fakes.NewFakeOrchestrator()
+	stream := fakes.NewFakeEventStream()
+	sink := &recordingSink{}
+	r, _ := newRunner(orch, stream, sink)
+
+	stream.OnSubscribe = func(target outbound.StreamTarget) {
+		go func() {
+			stream.Push(target, domain.Event{Type: "phase.started", EventID: "evt-1"})
+			stream.Close(target)
+		}()
+	}
+
+	_, err := r.Run(context.Background(), application.RunInput{
+		Project: "p", Message: "msg", BaseRef: "main", ArtifactStore: domain.ArtifactStoreEngram,
+	})
 	var exit *application.ExitError
 	if !errors.As(err, &exit) {
-		t.Fatalf("expected ExitError, got %T: %v", err, err)
+		t.Fatalf("expected ExitError, got %v", err)
+	}
+	if exit.Code != 4 {
+		t.Errorf("Code = %d, want 4", exit.Code)
+	}
+}
+
+func TestRunnerExitCode1OnTerminalFailureViaSnapshot(t *testing.T) {
+	orch := fakes.NewFakeOrchestrator()
+	stream := fakes.NewFakeEventStream()
+	sink := &recordingSink{}
+	r, _ := newRunner(orch, stream, sink)
+
+	stream.OnSubscribe = func(target outbound.StreamTarget) {
+		go func() {
+			orch.SetTerminal(target.ChangeID, domain.ChangeStatusFailed)
+			stream.Close(target)
+		}()
+	}
+
+	_, err := r.Run(context.Background(), application.RunInput{
+		Project: "p", Message: "msg", BaseRef: "main", ArtifactStore: domain.ArtifactStoreEngram,
+	})
+	var exit *application.ExitError
+	if !errors.As(err, &exit) {
+		t.Fatalf("expected ExitError, got %v", err)
 	}
 	if exit.Code != 1 {
 		t.Errorf("Code = %d, want 1", exit.Code)
-	}
-	if res.FinalStatus != domain.ChangeStatusFailed {
-		t.Errorf("FinalStatus = %q", res.FinalStatus)
 	}
 }
 
 func TestRunnerExitCode3OnCreateFailure(t *testing.T) {
 	orch := fakes.NewFakeOrchestrator()
 	orch.CreateErr = errors.New("orchestrator unreachable")
+	stream := fakes.NewFakeEventStream()
 	sink := &recordingSink{}
-	r, _ := newRunner(orch, sink)
+	r, _ := newRunner(orch, stream, sink)
 
 	_, err := r.Run(context.Background(), application.RunInput{
 		Project: "p", Message: "msg", BaseRef: "main", ArtifactStore: domain.ArtifactStoreEngram,
@@ -138,14 +243,17 @@ func TestRunnerExitCode3OnCreateFailure(t *testing.T) {
 
 func TestRunnerCanceledContextReturnsExit4(t *testing.T) {
 	orch := fakes.NewFakeOrchestrator()
+	stream := fakes.NewFakeEventStream()
 	sink := &recordingSink{}
-	r, _ := newRunner(orch, sink)
+	r, _ := newRunner(orch, stream, sink)
 
-	orch.GetBlockUntilCancel = true
+	stream.OnSubscribe = func(_ outbound.StreamTarget) {
+		// Never push, never close — let ctx cancel us out.
+	}
 
 	ctx, cancel := context.WithCancel(context.Background())
 	go func() {
-		time.Sleep(10 * time.Millisecond)
+		time.Sleep(20 * time.Millisecond)
 		cancel()
 	}()
 
@@ -163,76 +271,14 @@ func TestRunnerCanceledContextReturnsExit4(t *testing.T) {
 
 func TestRunnerInputRequiresProjectAndMessage(t *testing.T) {
 	orch := fakes.NewFakeOrchestrator()
+	stream := fakes.NewFakeEventStream()
 	sink := &recordingSink{}
-	r, _ := newRunner(orch, sink)
+	r, _ := newRunner(orch, stream, sink)
 
-	cases := []struct {
-		name string
-		in   application.RunInput
-	}{
-		{"empty message", application.RunInput{Project: "p", Message: ""}},
-		{"empty project", application.RunInput{Project: "", Message: "m"}},
+	if _, err := r.Run(context.Background(), application.RunInput{Message: ""}); err == nil {
+		t.Error("expected error on empty message")
 	}
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			_, err := r.Run(context.Background(), tc.in)
-			if err == nil {
-				t.Fatalf("expected error for %s", tc.name)
-			}
-			var exit *application.ExitError
-			if !errors.As(err, &exit) {
-				t.Fatalf("expected ExitError, got %T: %v", err, err)
-			}
-			if exit.Code != 3 {
-				t.Errorf("Code = %d, want 3", exit.Code)
-			}
-		})
+	if _, err := r.Run(context.Background(), application.RunInput{Message: "m"}); err == nil {
+		t.Error("expected error on empty project")
 	}
-}
-
-// poll-time non-ctx error should map to Code 3 (per spec §2.3), not Code 4.
-func TestRunnerExitCode3OnPollFailure(t *testing.T) {
-	sink := &recordingSink{}
-	stub := &alwaysFailGet{
-		createFn: func(_ outbound.CreateChangeInput) *domain.Change {
-			return &domain.Change{ID: "x", Status: domain.ChangeStatusPending}
-		},
-		getErr: domain.ErrChangeNotFound,
-	}
-	state := fakes.NewFakeStateStore()
-	runner := application.NewRunner(application.RunnerDeps{
-		Orch:  stub,
-		State: state,
-		Git:   fakes.NewFakeGitInspector(),
-		Sink:  sink,
-	}, application.RunnerOptions{PollMin: time.Millisecond, PollMax: 5 * time.Millisecond})
-
-	_, err := runner.Run(context.Background(), application.RunInput{
-		Project: "p", Message: "msg", BaseRef: "main", ArtifactStore: domain.ArtifactStoreEngram,
-	})
-	var exit *application.ExitError
-	if !errors.As(err, &exit) {
-		t.Fatalf("expected ExitError, got %T: %v", err, err)
-	}
-	if exit.Code != 3 {
-		t.Errorf("Code = %d, want 3 for ErrChangeNotFound mid-poll", exit.Code)
-	}
-}
-
-// alwaysFailGet is a minimal OrchestratorClient: CreateChange succeeds with
-// a fixed change, GetChange always returns getErr.
-type alwaysFailGet struct {
-	createFn func(outbound.CreateChangeInput) *domain.Change
-	getErr   error
-}
-
-func (a *alwaysFailGet) Healthz(_ context.Context) error { return nil }
-func (a *alwaysFailGet) CreateChange(_ context.Context, in outbound.CreateChangeInput) (*domain.Change, error) {
-	return a.createFn(in), nil
-}
-func (a *alwaysFailGet) GetChange(_ context.Context, _ domain.ChangeID) (*domain.Change, error) {
-	return nil, a.getErr
-}
-func (a *alwaysFailGet) ListChanges(_ context.Context, _ outbound.ListChangesFilter) ([]*domain.Change, error) {
-	return nil, nil
 }

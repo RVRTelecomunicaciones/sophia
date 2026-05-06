@@ -6,10 +6,12 @@ import (
 	"fmt"
 	"io"
 	"sync"
+	"time"
 
 	tea "charm.land/bubbletea/v2"
 
 	"github.com/RVRTelecomunicaciones/sophia-cli/internal/domain"
+	"github.com/RVRTelecomunicaciones/sophia-cli/internal/ports/outbound"
 )
 
 // ProgramConfig configures NewProgram.
@@ -17,6 +19,10 @@ type ProgramConfig struct {
 	ChangeID domain.ChangeID
 	Output   io.Writer // nil ⇒ os.Stdout (resolved by tea.WithOutput)
 	Input    io.Reader // nil ⇒ os.Stdin
+
+	// Browser is the outbound.Browser used by [O] in the approval banner.
+	// nil ⇒ pressing [O] surfaces an error line ("browser: not configured").
+	Browser outbound.Browser
 }
 
 // Program owns the Bubble Tea program plus its Bridge.
@@ -26,6 +32,13 @@ type Program struct {
 	bridge  *Bridge
 	closed  bool
 	running bool // true once Run() has been called
+
+	// M7: latest pure-Model state, updated on every Update call. Snapshot()
+	// returns a copy so tests can inspect without racing the program loop.
+	stateMu sync.Mutex
+	state   Model
+
+	browser outbound.Browser
 }
 
 // teaSender adapts *tea.Program to the Bridge's Sender interface.
@@ -42,21 +55,43 @@ func (s *teaSender) Send(m any) {
 	s.p.Send(m)
 }
 
-// rootModel implements the bubbletea v2 Model interface by delegating to the
-// pure Update/View functions.
+// rootModel implements bubbletea v2 Model by delegating to pure Update/View.
 //
-// v2 Init() signature: Init() tea.Cmd (returns only a Cmd, NOT (Model, Cmd)).
+// publish: called after every Update with the new pure-Model state, so
+// Program.Snapshot() can return the latest. nil-safe.
+//
+// openBrowser: called when an OpenBrowserMsg arrives. Spawns a goroutine to
+// call Browser.Open and Send a BrowserOpenedMsg back into the program.
+// nil-safe (handled in rootModel.Update with an error line fallback).
 type rootModel struct {
-	state Model
+	state       Model
+	publish     func(Model)
+	openBrowser func(url string)
 }
 
-func (rm rootModel) Init() tea.Cmd {
-	return nil
-}
+func (rm rootModel) Init() tea.Cmd { return nil }
 
 func (rm rootModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	// Intercept OpenBrowserMsg BEFORE the pure Update sees it: dispatch the
+	// browser open in a goroutine; the pure Update gets a no-op pass.
+	if om, ok := msg.(OpenBrowserMsg); ok {
+		if rm.openBrowser != nil {
+			rm.openBrowser(om.URL)
+		} else {
+			// No Browser configured — record an error line in the model.
+			rm.state = rm.state.WithError("browser: not configured")
+			if rm.publish != nil {
+				rm.publish(rm.state)
+			}
+		}
+		return rm, nil
+	}
+
 	newState, cmd := Update(rm.state, msg)
 	rm.state = newState
+	if rm.publish != nil {
+		rm.publish(rm.state)
+	}
 	return rm, cmd
 }
 
@@ -67,7 +102,29 @@ func (rm rootModel) View() tea.View {
 // NewProgram constructs a Program, wiring the Bubble Tea program to the Bridge
 // via teaSender.
 func NewProgram(cfg ProgramConfig) (*Program, error) {
-	root := rootModel{state: NewModel(ModelConfig{ChangeID: cfg.ChangeID})}
+	initial := NewModel(ModelConfig{ChangeID: cfg.ChangeID})
+
+	p := &Program{
+		state:   initial,
+		browser: cfg.Browser,
+	}
+
+	var openBrowserFn func(string)
+	if cfg.Browser != nil {
+		openBrowserFn = func(url string) {
+			p.handleOpenBrowser(url)
+		}
+	}
+
+	root := rootModel{
+		state: initial,
+		publish: func(m Model) {
+			p.stateMu.Lock()
+			p.state = m
+			p.stateMu.Unlock()
+		},
+		openBrowser: openBrowserFn,
+	}
 
 	opts := []tea.ProgramOption{
 		// Disable the signal handler so that our Update logic controls Ctrl+C
@@ -94,10 +151,10 @@ func NewProgram(cfg ProgramConfig) (*Program, error) {
 	sender := &teaSender{p: teaProg}
 	bridge := NewBridge(BridgeConfig{Sender: sender})
 
-	return &Program{
-		tea:    teaProg,
-		bridge: bridge,
-	}, nil
+	p.tea = teaProg
+	p.bridge = bridge
+
+	return p, nil
 }
 
 // Bridge returns the EventSink-implementing bridge.
@@ -111,6 +168,12 @@ func (p *Program) Run(ctx context.Context) (string, error) {
 	p.mu.Lock()
 	p.running = true
 	p.mu.Unlock()
+
+	defer func() {
+		p.mu.Lock()
+		p.running = false
+		p.mu.Unlock()
+	}()
 
 	stopWatcher := make(chan struct{})
 	go func() {
@@ -154,6 +217,45 @@ func (p *Program) Close() error {
 	}
 	return nil
 }
+
+// handleOpenBrowser runs the browser open in a goroutine and sends a
+// BrowserOpenedMsg back into the program loop with the result.
+// Only called when p.browser != nil (enforced by NewProgram).
+func (p *Program) handleOpenBrowser(url string) {
+	browser := p.browser
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		err := browser.Open(ctx, url)
+		p.mu.Lock()
+		running := p.running
+		p.mu.Unlock()
+		if !running {
+			return
+		}
+		p.tea.Send(BrowserOpenedMsg{Err: err})
+	}()
+}
+
+// SendForTest forwards a tea.Msg into the program loop. Test-only.
+func (p *Program) SendForTest(msg any) {
+	p.mu.Lock()
+	running := p.running
+	p.mu.Unlock()
+	if !running || p.tea == nil {
+		return
+	}
+	p.tea.Send(msg)
+}
+
+// Snapshot returns a copy of the latest pure-Model state observed by the
+// program. Tests use this to inspect side effects without racing.
+func (p *Program) Snapshot() Model {
+	p.stateMu.Lock()
+	defer p.stateMu.Unlock()
+	return p.state
+}
+
 
 // reattachHint returns the user-facing reattach instruction printed AFTER
 // the bubbletea program exits. Spec §2.2.

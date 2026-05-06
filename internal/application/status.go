@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"path/filepath"
+	"time"
 
 	"github.com/RVRTelecomunicaciones/sophia-cli/internal/domain"
 	"github.com/RVRTelecomunicaciones/sophia-cli/internal/ports/outbound"
@@ -13,51 +14,119 @@ import (
 // StatusSource indicates where the resolved last_change_id came from.
 type StatusSource string
 
-// Status sources.
 const (
+	StatusSourceFlag    StatusSource = "flag"
 	StatusSourceProject StatusSource = "project"
 	StatusSourceGlobal  StatusSource = "global"
+	StatusSourceNone    StatusSource = "none"
 )
 
 // StatusDeps groups the ports StatusReader needs.
 type StatusDeps struct {
+	Orch         outbound.OrchestratorClient
 	State        outbound.StateStore
 	Git          outbound.GitInspector
 	ProjectStore outbound.ProjectConfigStore
 }
 
-// StatusOutput is the shape returned by Resolve.
-type StatusOutput struct {
-	IsEmpty  bool
-	ChangeID domain.ChangeID
-	Source   StatusSource
+// StatusOptions tunes StatusReader.
+type StatusOptions struct {
+	// FetchTimeout caps the GetChange call. Default 10s.
+	FetchTimeout time.Duration
 }
 
-// StatusReader is the M3 placeholder `sophia status` use case. It resolves
-// the local last_change_id only — no orchestrator call. Real status (with
-// HTTP fetch) ships in M8.
+// ResolveInput controls Resolve.
+type ResolveInput struct {
+	ChangeID domain.ChangeID
+}
+
+// StatusReport is the shape returned by Resolve.
+type StatusReport struct {
+	IsEmpty bool
+	Source  StatusSource
+	Change  *domain.Change
+}
+
+// StatusReader implements `sophia status`.
 type StatusReader struct {
 	deps StatusDeps
+	opts StatusOptions
 }
 
-// NewStatusReader constructs a StatusReader.
-func NewStatusReader(d StatusDeps) *StatusReader { return &StatusReader{deps: d} }
-
-// Resolve walks: project-scoped → global → empty.
-func (r *StatusReader) Resolve(ctx context.Context) (StatusOutput, error) {
-	if id, src, err := r.tryProject(ctx); err == nil && !id.IsZero() {
-		return StatusOutput{ChangeID: id, Source: src}, nil
+// NewStatusReader constructs a StatusReader. Pass StatusOptions{} for defaults.
+func NewStatusReader(d StatusDeps, opts StatusOptions) *StatusReader {
+	if opts.FetchTimeout <= 0 {
+		opts.FetchTimeout = 10 * time.Second
 	}
-	id, err := r.deps.State.GetGlobalLast(ctx)
+	return &StatusReader{deps: d, opts: opts}
+}
+
+// Resolve walks: arg → project-scoped → global → empty. When a source is
+// found, fetches the snapshot from the orchestrator and returns it on the
+// StatusReport. Maps errors to spec §2.3 exit codes via *ExitError.
+func (r *StatusReader) Resolve(ctx context.Context, in ResolveInput) (StatusReport, error) {
+	id, src, err := r.locate(ctx, in)
 	if err != nil {
-		return StatusOutput{}, fmt.Errorf("global: %w", err)
+		return StatusReport{}, err
 	}
-	if !id.IsZero() {
-		return StatusOutput{ChangeID: id, Source: StatusSourceGlobal}, nil
+	if id.IsZero() {
+		return StatusReport{IsEmpty: true, Source: StatusSourceNone}, nil
 	}
-	return StatusOutput{IsEmpty: true}, nil
+	snap, err := r.fetch(ctx, id)
+	if err != nil {
+		return StatusReport{}, err
+	}
+	return StatusReport{Source: src, Change: snap}, nil
 }
 
+// locate runs the resolution order: arg → project-scoped → global. A
+// malformed .sophia.yaml (ErrInvalidYAML) is fatal — `status` must not hide
+// config corruption (cambio 4).
+func (r *StatusReader) locate(ctx context.Context, in ResolveInput) (domain.ChangeID, StatusSource, error) {
+	if !in.ChangeID.IsZero() {
+		return in.ChangeID, StatusSourceFlag, nil
+	}
+	id, src, err := r.tryProject(ctx)
+	if err == nil && !id.IsZero() {
+		return id, src, nil
+	}
+	if err != nil && errors.Is(err, domain.ErrInvalidYAML) {
+		return "", "", &ExitError{Code: 3, Err: fmt.Errorf("project config invalid: %w", err)}
+	}
+	gid, err := r.deps.State.GetGlobalLast(ctx)
+	if err != nil {
+		return "", "", fmt.Errorf("global last: %w", err)
+	}
+	if !gid.IsZero() {
+		return gid, StatusSourceGlobal, nil
+	}
+	return "", StatusSourceNone, nil
+}
+
+// fetch GETs the snapshot from the orchestrator with the configured timeout
+// and maps errors per cambio 5 (parent ctx cancel + internal FetchTimeout
+// → exit 4; ChangeNotFound / Unreachable → exit 3).
+func (r *StatusReader) fetch(ctx context.Context, id domain.ChangeID) (*domain.Change, error) {
+	if r.deps.Orch == nil {
+		return nil, &ExitError{Code: 3, Err: errors.New("status: orchestrator client not wired")}
+	}
+	fctx, cancel := context.WithTimeout(ctx, r.opts.FetchTimeout)
+	defer cancel()
+	snap, err := r.deps.Orch.GetChange(fctx, id)
+	if err != nil {
+		if errors.Is(ctx.Err(), context.Canceled) {
+			return nil, &ExitError{Code: 4, Err: err}
+		}
+		if errors.Is(err, context.DeadlineExceeded) || errors.Is(fctx.Err(), context.DeadlineExceeded) {
+			return nil, &ExitError{Code: 4, Err: fmt.Errorf("get change timed out after %s: %w", r.opts.FetchTimeout, err)}
+		}
+		return nil, &ExitError{Code: 3, Err: fmt.Errorf("get change: %w", err)}
+	}
+	return snap, nil
+}
+
+// tryProject surfaces ProjectConfigStore.Read errors verbatim so locate can
+// distinguish ErrConfigMissing (fall through) from ErrInvalidYAML (fatal).
 func (r *StatusReader) tryProject(ctx context.Context) (domain.ChangeID, StatusSource, error) {
 	root, err := r.deps.Git.RepoRoot(ctx, ".")
 	if err != nil {
@@ -66,9 +135,6 @@ func (r *StatusReader) tryProject(ctx context.Context) (domain.ChangeID, StatusS
 	cfgPath := filepath.Join(root, ".sophia.yaml")
 	cfg, err := r.deps.ProjectStore.Read(ctx, cfgPath)
 	if err != nil {
-		if errors.Is(err, domain.ErrConfigMissing) {
-			return "", "", err
-		}
 		return "", "", err
 	}
 	remote, _ := r.deps.Git.RemoteURL(ctx, root)

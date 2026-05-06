@@ -20,8 +20,8 @@ type PhaseDTO struct {
 	Type       string    `json:"type"`
 	Status     string    `json:"status"`
 	Confidence float64   `json:"confidence"`
-	StartedAt  time.Time `json:"started_at,omitempty"`
-	EndedAt    time.Time `json:"ended_at,omitempty"`
+	StartedAt  time.Time `json:"started_at,omitzero"`
+	EndedAt    time.Time `json:"ended_at,omitzero"`
 }
 
 // ChangeResponse mirrors the response shape of POST /api/v1/changes and
@@ -36,8 +36,8 @@ type ChangeResponse struct {
 	Status            string     `json:"status,omitempty"`
 	CurrentPhaseID    string     `json:"current_phase_id,omitempty"`
 	Phases            []PhaseDTO `json:"phases,omitempty"`
-	CreatedAt         time.Time  `json:"created_at,omitempty"`
-	UpdatedAt         time.Time  `json:"updated_at,omitempty"`
+	CreatedAt         time.Time  `json:"created_at,omitzero"`
+	UpdatedAt         time.Time  `json:"updated_at,omitzero"`
 }
 
 // ToDomain converts a ChangeResponse to the pure domain type.

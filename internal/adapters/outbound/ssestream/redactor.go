@@ -13,8 +13,11 @@ const redactionMarker = "[REDACTED]"
 var secretPatterns = []*regexp.Regexp{
 	// Bearer tokens: "Bearer <opaque>" — opaque allows base64url + dots/dashes.
 	regexp.MustCompile(`Bearer\s+[A-Za-z0-9._\-+/=]+`),
-	// JWT triplets: 3 base64url segments joined by dots.
-	regexp.MustCompile(`[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}`),
+	// JWT triplets: 3 base64url segments joined by dots. Third segment is
+	// the signature, which is base64url HMAC/RSA output and is always
+	// ≥32 chars. Word boundaries prevent matching when embedded inside
+	// larger identifiers (e.g. compound trace IDs in a log message).
+	regexp.MustCompile(`\b[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{32,}\b`),
 	// AWS access key IDs.
 	regexp.MustCompile(`AKIA[0-9A-Z]{16}`),
 	// GitHub PAT/OAuth/User/Server/Refresh tokens.
@@ -74,6 +77,9 @@ func RedactString(s string) string {
 //   - Nested maps and slices are walked recursively.
 //   - Input is never mutated.
 func RedactPayload(payload map[string]any) map[string]any {
+	if payload == nil {
+		return nil
+	}
 	out := make(map[string]any, len(payload))
 	for k, v := range payload {
 		out[k] = redactValue(k, v)

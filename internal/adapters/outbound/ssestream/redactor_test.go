@@ -157,3 +157,59 @@ func TestRedactPayloadSkipsTechnicalAllowlist(t *testing.T) {
 		}
 	}
 }
+
+// Regression: legitimate dotted strings (task descriptions, ULID-style IDs
+// joined by dots) must NOT be eaten by the JWT pattern.
+func TestRedactStringDoesNotMatchLegitimateDottedStrings(t *testing.T) {
+	cases := []string{
+		"task_execution.phase_started.explore_mode",
+		"01HXABCDEFGHJKMNPQ.01HXABCDEFGHJKMNPQ.01HXABCDEFGHJKMNPQ",
+		"compound.trace.identifier_short",
+		"phase_one.phase_two.phase_three",
+	}
+	for _, in := range cases {
+		got := ssestream.RedactString(in)
+		if got != in {
+			t.Errorf("legitimate string was redacted: %q -> %q", in, got)
+		}
+	}
+}
+
+// Regression: a real JWT (third segment ≥ 32 chars) IS still redacted.
+func TestRedactStringStillRedactsRealJWTs(t *testing.T) {
+	jwt := "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxIn0.SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c"
+	in := "Authorization=" + jwt + " "
+	got := ssestream.RedactString(in)
+	if strings.Contains(got, jwt) {
+		t.Errorf("JWT leaked: %q", got)
+	}
+	if !strings.Contains(got, "[REDACTED]") {
+		t.Errorf("expected [REDACTED]: %q", got)
+	}
+}
+
+// Regression: nil payload returns nil (preserves caller's nil semantics).
+func TestRedactPayloadNilReturnsNil(t *testing.T) {
+	if got := ssestream.RedactPayload(nil); got != nil {
+		t.Errorf("expected nil, got %v", got)
+	}
+}
+
+// Regression: scalar non-string values pass through verbatim.
+func TestRedactPayloadPassesThroughScalars(t *testing.T) {
+	payload := map[string]any{
+		"count":      42,
+		"confidence": 0.87,
+		"active":     true,
+	}
+	got := ssestream.RedactPayload(payload)
+	if got["count"] != 42 {
+		t.Errorf("count = %v, want 42", got["count"])
+	}
+	if got["confidence"] != 0.87 {
+		t.Errorf("confidence = %v, want 0.87", got["confidence"])
+	}
+	if got["active"] != true {
+		t.Errorf("active = %v, want true", got["active"])
+	}
+}

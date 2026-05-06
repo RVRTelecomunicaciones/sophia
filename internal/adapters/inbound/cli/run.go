@@ -29,7 +29,7 @@ func newRunCmd(d Deps) *cobra.Command {
 				return fmt.Errorf("run: runner not wired")
 			}
 			if !noTUI || !jsonOut {
-				return fmt.Errorf("run: M4 only supports --no-tui --json (TUI ships in M6)")
+				return fmt.Errorf("run: --no-tui and --json are both required in M4 (TUI ships in M6)")
 			}
 			if len(args) == 0 || strings.TrimSpace(args[0]) == "" {
 				return fmt.Errorf("run: message required (positional argument)")

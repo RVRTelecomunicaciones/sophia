@@ -75,6 +75,9 @@ func TestRunCommandRequiresMessage(t *testing.T) {
 }
 
 func TestRunCommandSucceedsWithMessage(t *testing.T) {
+	t.Setenv(application.EnvOrchestratorURL, "")
+	t.Setenv(application.EnvProject, "")
+	t.Setenv(application.EnvBaseRef, "")
 	var sinkBuf bytes.Buffer
 	deps, orch := newRunDeps(t, &sinkBuf)
 	first := true
@@ -100,7 +103,14 @@ func TestRunCommandSucceedsWithMessage(t *testing.T) {
 	}
 }
 
+// TestRunCommandReturnsExitErrorOnFailure asserts that a Failed terminal status
+// surfaces as a non-nil error from cobra. The strict ExitError.Code assertion
+// is intentionally deferred to Task 8, where main.go is wired to extract the
+// code via errors.As and exit accordingly.
 func TestRunCommandReturnsExitErrorOnFailure(t *testing.T) {
+	t.Setenv(application.EnvOrchestratorURL, "")
+	t.Setenv(application.EnvProject, "")
+	t.Setenv(application.EnvBaseRef, "")
 	var sinkBuf bytes.Buffer
 	deps, orch := newRunDeps(t, &sinkBuf)
 	orch.TickHook = func(c *domain.Change) { c.Status = domain.ChangeStatusFailed }

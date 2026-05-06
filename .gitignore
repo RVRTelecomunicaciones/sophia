@@ -4,7 +4,13 @@
 *.test
 *.out
 cover.out
+cover.unit.out
+cover.bin.out
+cover.merged.out
 coverage.html
+
+# coverage data
+coverage/
 
 # IDE
 .idea/

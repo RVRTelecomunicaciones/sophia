@@ -10,7 +10,7 @@ import (
 )
 
 func TestSmokeVersion(t *testing.T) {
-	cmd := exec.Command("../../bin/sophia", "version")
+	cmd := exec.Command(absBinary(t), "version")
 	var out bytes.Buffer
 	cmd.Stdout = &out
 	cmd.Stderr = &out

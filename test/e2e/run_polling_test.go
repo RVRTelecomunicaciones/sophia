@@ -121,6 +121,13 @@ func TestSmokeRunAgainstStub(t *testing.T) {
 
 func absBinary(t *testing.T) string {
 	t.Helper()
+	if env := os.Getenv("SOPHIA_TEST_BINARY"); env != "" {
+		if abs, err := filepath.Abs(env); err == nil {
+			if _, err := os.Stat(abs); err == nil {
+				return abs
+			}
+		}
+	}
 	abs, err := filepath.Abs("../../bin/sophia")
 	if err != nil {
 		t.Fatal(err)

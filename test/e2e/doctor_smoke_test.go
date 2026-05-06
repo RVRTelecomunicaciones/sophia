@@ -10,7 +10,7 @@ import (
 )
 
 func TestSmokeDoctorJSON(t *testing.T) {
-	cmd := exec.Command("../../bin/sophia", "doctor", "--json")
+	cmd := exec.Command(absBinary(t), "doctor", "--json")
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr

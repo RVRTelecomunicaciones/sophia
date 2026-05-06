@@ -68,6 +68,9 @@ func New(cfg Config) *Client {
 	if path == "" {
 		path = DefaultStreamPath
 	}
+	if !strings.Contains(path, "%s") {
+		panic("ssestream: Config.Path must contain %s for ChangeID substitution")
+	}
 	hc := cfg.HTTP
 	if hc == nil {
 		// Zero timeout = no timeout, which is required for long-lived SSE
@@ -185,7 +188,13 @@ func (c *Client) connectOnce(
 	out chan<- domain.Event,
 	watchdog *Watchdog,
 ) (anyEvent bool, lastSeenID string, err error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	// Per-attempt cancel: when watchdog or ctx fires we return from this function.
+	// Cancelling attemptCtx unblocks the conn.Connect() goroutine so it exits
+	// cleanly instead of leaking on the next reconnect attempt.
+	attemptCtx, cancelAttempt := context.WithCancel(ctx)
+	defer cancelAttempt()
+
+	req, err := http.NewRequestWithContext(attemptCtx, http.MethodGet, url, nil)
 	if err != nil {
 		return false, lastID, fmt.Errorf("build request: %w", err)
 	}
@@ -210,6 +219,7 @@ func (c *Client) connectOnce(
 		raw := RawSSE{Type: ev.Type, ID: ev.LastEventID, Data: ev.Data}
 		if IsHeartbeat(raw) {
 			watchdog.Reset()
+			anyEvent = true // heartbeats prove the connection is healthy → reset budget
 			if raw.ID != "" {
 				lastSeenID = raw.ID
 			}
@@ -251,9 +261,15 @@ func classifyConnectErr(err error) error {
 	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
 		return err
 	}
-	msg := err.Error()
-	if strings.Contains(msg, "401") || strings.Contains(msg, "403") {
-		return errAuthAbort
+	// go-sse wraps validator errors in *sse.ConnectionError. Scope the
+	// substring check to the inner validator error for stability if go-sse
+	// changes its outer wrapping format.
+	var connErr *sse.ConnectionError
+	if errors.As(err, &connErr) && connErr.Err != nil {
+		msg := connErr.Err.Error()
+		if strings.Contains(msg, "401") || strings.Contains(msg, "403") {
+			return errAuthAbort
+		}
 	}
 	return err
 }

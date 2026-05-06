@@ -168,8 +168,9 @@ func TestClientGivesUpAfterRetryBudgetExhausted(t *testing.T) {
 		select {
 		case _, ok := <-ch:
 			if !ok {
-				if hits.Load() < 1 {
-					t.Errorf("expected ≥1 connection attempt, got %d", hits.Load())
+				// MaxRetries=3 → exactly 4 connection attempts (1 initial + 3 retries).
+				if n := hits.Load(); n != 4 {
+					t.Errorf("expected exactly 4 connection attempts, got %d", n)
 				}
 				return
 			}

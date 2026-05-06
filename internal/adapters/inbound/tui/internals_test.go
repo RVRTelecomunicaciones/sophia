@@ -28,24 +28,6 @@ func TestReattachHintEmptyChangeID(t *testing.T) {
 	}
 }
 
-// approvalGateAsEvent ---------------------------------------------------------
-
-func TestApprovalGateAsEventTranslatesType(t *testing.T) {
-	msg := ApprovalGateMsg{Gate: domain.ApprovalGate{Phase: domain.PhaseApply}}
-	got := approvalGateAsEvent(msg)
-	if got.Type != "approval.required" {
-		t.Errorf("Type = %q, want approval.required", got.Type)
-	}
-}
-
-func TestApprovalGateAsEventIncludesPhasePayload(t *testing.T) {
-	msg := ApprovalGateMsg{Gate: domain.ApprovalGate{Phase: domain.PhaseApply}}
-	got := approvalGateAsEvent(msg)
-	if got.Payload["phase"] != string(domain.PhaseApply) {
-		t.Errorf("payload phase = %v, want %q", got.Payload["phase"], domain.PhaseApply)
-	}
-}
-
 // styleFor --------------------------------------------------------------------
 
 func TestStyleForCoversAllStatuses(t *testing.T) {

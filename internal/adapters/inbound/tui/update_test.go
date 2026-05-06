@@ -261,3 +261,44 @@ func TestUpdateBrowserOpenedMsgWithNilIsNoOp(t *testing.T) {
 func keyPressTab() tea.KeyPressMsg {
 	return tea.KeyPressMsg{Code: tea.KeyTab}
 }
+
+// Regression for the ApprovalGateMsg URL-loss bug discovered during M7 Task 10.
+// ApprovalGateMsg{Gate{URL,Reason,...}} → Model.BannerGate() must preserve all
+// fields from the Gate. Previously, the synthetic event round-trip via
+// approvalGateAsEvent only copied `phase`, losing URL/Reason/Risk/Policy.
+func TestUpdateApprovalGateMsgPreservesAllFields(t *testing.T) {
+	m := tui.NewModel(tui.ModelConfig{ChangeID: domain.ChangeID("01HX")})
+	gate := domain.ApprovalGate{
+		URL:      "https://gov.local/approvals/abc",
+		Reason:   "policy says no apply",
+		Risk:     "medium",
+		Policy:   "require_approval",
+		ChangeID: domain.ChangeID("01HX"),
+		Phase:    domain.PhaseApply,
+		TraceID:  "trace-xyz",
+	}
+	m2, _ := tui.Update(m, tui.ApprovalGateMsg{Gate: gate})
+
+	got := m2.BannerGate()
+	if got == nil {
+		t.Fatal("ApprovalGateMsg should set BannerGate")
+	}
+	if got.URL != "https://gov.local/approvals/abc" {
+		t.Errorf("URL = %q (lost in roundtrip?)", got.URL)
+	}
+	if got.Reason != "policy says no apply" {
+		t.Errorf("Reason = %q", got.Reason)
+	}
+	if got.Risk != "medium" {
+		t.Errorf("Risk = %q", got.Risk)
+	}
+	if got.Policy != "require_approval" {
+		t.Errorf("Policy = %q", got.Policy)
+	}
+	if got.Phase != domain.PhaseApply {
+		t.Errorf("Phase = %q", got.Phase)
+	}
+	if got.TraceID != "trace-xyz" {
+		t.Errorf("TraceID = %q", got.TraceID)
+	}
+}

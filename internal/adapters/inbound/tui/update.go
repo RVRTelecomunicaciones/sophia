@@ -2,8 +2,6 @@ package tui
 
 import (
 	tea "charm.land/bubbletea/v2"
-
-	"github.com/RVRTelecomunicaciones/sophia-cli/internal/domain"
 )
 
 // OpenBrowserMsg is dispatched by Update when the user presses [O] with a
@@ -40,7 +38,14 @@ func Update(m Model, msg tea.Msg) (Model, tea.Cmd) {
 		return m.ApplyEvent(msg.Event), nil
 
 	case ApprovalGateMsg:
-		return m.ApplyEvent(approvalGateAsEvent(msg)), nil
+		// Set the banner directly with the structured Gate. The phase row
+		// marker is already set by the matching EventMsg("approval.required")
+		// that fires immediately before this in the runner's dispatchEvent.
+		// Going through ApplyEvent would re-run applyBannerFromEvent and
+		// discard URL/Reason/Risk/Policy because the synthetic event payload
+		// doesn't carry those fields.
+		cp := msg.Gate
+		return m.WithBannerGate(&cp), nil
 
 	case ErrorMsg:
 		text := ""
@@ -96,15 +101,4 @@ func updateKey(m Model, msg tea.KeyPressMsg) (Model, tea.Cmd) {
 		return m, func() tea.Msg { return OpenBrowserMsg{URL: url} }
 	}
 	return m, nil
-}
-
-// approvalGateAsEvent translates ApprovalGateMsg into a synthetic domain.Event
-// so ApplyEvent can mark the affected phase row uniformly.
-func approvalGateAsEvent(msg ApprovalGateMsg) domain.Event {
-	return domain.Event{
-		Type: "approval.required",
-		Payload: map[string]any{
-			"phase": string(msg.Gate.Phase),
-		},
-	}
 }

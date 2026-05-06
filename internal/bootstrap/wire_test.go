@@ -63,6 +63,20 @@ func TestNewWiresM4Run(t *testing.T) {
 	}
 }
 
+func TestNewWiresM5SSEStream(t *testing.T) {
+	root, err := bootstrap.New(bootstrap.Config{LogWriter: nil})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Smoke: the run command is still wired; the SSE stream is constructed
+	// inside the runner. We can't assert the stream type from outside without
+	// exposing it via Deps, so this is a smoke check.
+	c, _, err := root.Find([]string{"run"})
+	if err != nil || c == nil {
+		t.Fatalf("run cmd missing: %v", err)
+	}
+}
+
 func TestNewHonorsOrchestratorURLEnv(t *testing.T) {
 	t.Setenv(application.EnvOrchestratorURL, "http://from-env:1234")
 	root, err := bootstrap.New(bootstrap.Config{LogWriter: nil})

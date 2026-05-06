@@ -5,6 +5,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"time"
 
 	"github.com/spf13/cobra"
 
@@ -15,6 +16,7 @@ import (
 	"github.com/RVRTelecomunicaciones/sophia-cli/internal/adapters/outbound/gitcli"
 	"github.com/RVRTelecomunicaciones/sophia-cli/internal/adapters/outbound/orchestratorhttp"
 	"github.com/RVRTelecomunicaciones/sophia-cli/internal/adapters/outbound/sseprobe"
+	"github.com/RVRTelecomunicaciones/sophia-cli/internal/adapters/outbound/ssestream"
 	"github.com/RVRTelecomunicaciones/sophia-cli/internal/adapters/outbound/xdgpaths"
 	"github.com/RVRTelecomunicaciones/sophia-cli/internal/adapters/outbound/yamlconfig"
 	"github.com/RVRTelecomunicaciones/sophia-cli/internal/application"
@@ -92,14 +94,24 @@ func New(cfg Config) (*cobra.Command, error) {
 		Git:          git,
 	})
 
+	// SSE stream client (M5): consumes /api/v1/changes/{id}/events with
+	// reconnect, Last-Event-ID, and 60s heartbeat watchdog per spec §5.7.
+	stream := ssestream.New(ssestream.Config{
+		BaseURL:    cfg.OrchestratorURL,
+		Backoff:    ssestream.BackoffConfig{Min: time.Second, Max: 30 * time.Second},
+		MaxRetries: ssestream.DefaultMaxRetries,
+		Heartbeat:  ssestream.DefaultHeartbeat,
+	})
+
 	// JSON sink writes to stdout. The runner is constructed with this sink
 	// for V1; M6 will swap to a TUI sink based on flags.
 	sink := jsonsink.New(jsonsink.Config{Writer: os.Stdout})
 	runner := application.NewRunner(application.RunnerDeps{
-		Orch:  orch,
-		State: state,
-		Git:   git,
-		Sink:  sink,
+		Orch:        orch,
+		State:       state,
+		Git:         git,
+		Sink:        sink,
+		EventStream: stream,
 	}, application.RunnerOptions{})
 
 	userConfigPath := filepath.Join(xdg.ConfigRoot, "config.yaml")

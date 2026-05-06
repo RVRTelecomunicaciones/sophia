@@ -127,7 +127,10 @@ func TestWatchdogResetExtendsDeadline(t *testing.T) {
 	}
 }
 
-func TestWatchdogStopReleasesResources(t *testing.T) {
+// Stop must prevent the watchdog from firing — even if the timeout window
+// is later crossed. This is the contract Task 5's SSE client relies on
+// when shutting down a connection cleanly.
+func TestWatchdogStopPreventsLaterFire(t *testing.T) {
 	clk := &fakeClock{now: time.Now()}
 	w := ssestream.NewWatchdog(ssestream.WatchdogConfig{
 		Timeout: 60 * time.Second,
@@ -135,12 +138,14 @@ func TestWatchdogStopReleasesResources(t *testing.T) {
 	})
 	w.Reset()
 	w.Stop()
-	// After Stop, Done channel should close (or be drained safely).
+
+	clk.Advance(90 * time.Second) // well past the 60s timeout
+
 	select {
 	case <-w.Done():
-		// closed — acceptable
+		t.Fatal("watchdog fired after Stop()")
 	case <-time.After(50 * time.Millisecond):
-		// not closed but Stop returns cleanly — also acceptable
+		// correct: Stop() prevented firing
 	}
 }
 
@@ -156,12 +161,6 @@ type fakeTimer struct {
 	deadline time.Time
 	ch       chan time.Time
 	stopped  bool
-}
-
-func (c *fakeClock) Now() time.Time {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	return c.now
 }
 
 func (c *fakeClock) AfterFunc(d time.Duration, fn func()) ssestream.StoppableTimer {
@@ -217,4 +216,16 @@ func (s *fakeStoppableTimer) Reset(d time.Duration) bool {
 	s.timer.stopped = false
 	s.timer.deadline = s.clock.now.Add(d)
 	return !already
+}
+
+func TestRetryBudgetZeroMaxUsesDefault(t *testing.T) {
+	b := ssestream.NewRetryBudget(0)
+	for i := 0; i < ssestream.DefaultMaxRetries; i++ {
+		if !b.TryUse() {
+			t.Fatalf("attempt %d should succeed with default max", i+1)
+		}
+	}
+	if b.TryUse() {
+		t.Error("attempt past default max should fail")
+	}
 }

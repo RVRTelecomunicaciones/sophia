@@ -16,7 +16,6 @@ const (
 // Clock abstracts time for deterministic tests. Production code uses
 // realClock{}; tests inject a fake.
 type Clock interface {
-	Now() time.Time
 	AfterFunc(d time.Duration, fn func()) StoppableTimer
 }
 
@@ -28,7 +27,6 @@ type StoppableTimer interface {
 
 type realClock struct{}
 
-func (realClock) Now() time.Time { return time.Now() }
 func (realClock) AfterFunc(d time.Duration, fn func()) StoppableTimer {
 	return time.AfterFunc(d, fn)
 }
@@ -125,6 +123,10 @@ type WatchdogConfig struct {
 // Watchdog fires its Done channel when no Reset() has been called within
 // Timeout. Used to force a reconnect when the orchestrator stops sending
 // heartbeats — spec §5.7 row 5.
+//
+// Single-use semantics: once Done fires or Stop is called, the watchdog
+// is permanently disabled and Reset becomes a no-op. Callers create a
+// new Watchdog per connection attempt.
 type Watchdog struct {
 	mu      sync.Mutex
 	timeout time.Duration

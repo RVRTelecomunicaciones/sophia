@@ -5,6 +5,7 @@ package e2e_test
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -31,21 +32,38 @@ func TestSmokeRunAgainstStub(t *testing.T) {
 	}
 	binary := absBinary(t)
 
-	// Stub orchestrator with auto-advance.
-	calls := 0
+	// Stub orchestrator: SSE-first (M5). The runner creates a Change then subscribes
+	// to /api/v1/changes/{id}/events. After the stream closes it calls GetChange once
+	// to confirm terminal status.
+	//
+	// The SSE client retries on clean close (err=nil), so we return 401 on the
+	// second /events connection to trigger errAuthAbort and close the channel
+	// without burning through the full retry budget (which would take 30+ s).
+	sseConnections := 0
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
 		switch {
 		case r.Method == http.MethodPost && r.URL.Path == "/api/v1/changes":
+			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusCreated)
 			_, _ = w.Write([]byte(`{"change_id":"01HX","status":"pending","name":"msg","project":"p"}`))
-		case r.Method == http.MethodGet && strings.HasPrefix(r.URL.Path, "/api/v1/changes/"):
-			calls++
-			status := "running"
-			if calls > 1 {
-				status = "done"
+		case r.Method == http.MethodGet && strings.HasSuffix(r.URL.Path, "/events"):
+			sseConnections++
+			if sseConnections > 1 {
+				// Abort reconnect loop immediately — channel closes, runner calls GetChange.
+				w.WriteHeader(http.StatusUnauthorized)
+				return
 			}
-			_, _ = w.Write([]byte(`{"change_id":"01HX","status":"` + status + `"}`))
+			// First connection: emit one event then close cleanly.
+			w.Header().Set("Content-Type", "text/event-stream")
+			w.Header().Set("Cache-Control", "no-cache")
+			w.WriteHeader(http.StatusOK)
+			flusher := w.(http.Flusher)
+			fmt.Fprint(w, "event: phase.completed\nid: evt-1\ndata: {\"payload\":{\"status\":\"done\"}}\n\n")
+			flusher.Flush()
+		case r.Method == http.MethodGet && strings.HasPrefix(r.URL.Path, "/api/v1/changes/"):
+			// Post-stream snapshot: always return terminal status.
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"change_id":"01HX","status":"done"}`))
 		default:
 			w.WriteHeader(http.StatusNotFound)
 		}

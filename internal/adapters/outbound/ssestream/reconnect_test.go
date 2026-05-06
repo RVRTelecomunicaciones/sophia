@@ -110,7 +110,7 @@ func TestWatchdogResetExtendsDeadline(t *testing.T) {
 	done := w.Done()
 
 	clk.Advance(45 * time.Second)
-	w.Reset() // should restart the 60s window
+	w.Reset()                     // should restart the 60s window
 	clk.Advance(45 * time.Second) // 90s total but only 45s since last Reset
 
 	select {

@@ -874,13 +874,16 @@ func TestAttacherFromSnapshotSkipsGetChange(t *testing.T) {
 	getChangeCalls := 0
 	orch.OnGetChange = func(domain.ChangeID) { getChangeCalls++ }
 
-	snap := &domain.Change{ID: "PRE-FETCHED", Project: "p", Status: domain.ChangeStatusRunning}
-	stream.OnSubscribe = func(target outbound.StreamTarget) {
-		go func() {
-			orch.SetTerminal(target.ChangeID, domain.ChangeStatusDone)
-			stream.Close(target)
-		}()
-	}
+	subscribed := false
+	stream.OnSubscribe = func(_ outbound.StreamTarget) { subscribed = true }
+
+	// A pre-fetched terminal snapshot exercises the AttachFromSnapshot short-
+	// circuit: persist + OnSnapshot + Observe-short-circuit (Observe sees a
+	// terminal FinalStatus and skips both Subscribe and the post-stream
+	// refresh). Result: zero GetChange calls — the property that makes
+	// AttachFromSnapshot the right primitive for cli.attachJSONL's eager-arm
+	// path (D-M8-13).
+	snap := &domain.Change{ID: "PRE-FETCHED", Project: "p", Status: domain.ChangeStatusDone}
 
 	res, err := a.AttachFromSnapshot(context.Background(), snap, "p", sink)
 	if err != nil {
@@ -888,6 +891,9 @@ func TestAttacherFromSnapshotSkipsGetChange(t *testing.T) {
 	}
 	if getChangeCalls != 0 {
 		t.Errorf("AttachFromSnapshot must NOT call GetChange (got %d calls)", getChangeCalls)
+	}
+	if subscribed {
+		t.Error("AttachFromSnapshot must NOT subscribe when snapshot is terminal")
 	}
 	if res.ChangeID != "PRE-FETCHED" {
 		t.Errorf("ChangeID = %q, want PRE-FETCHED", res.ChangeID)
@@ -3633,6 +3639,8 @@ User audit caught five issues in the as-written plan and the M5/M7 code already 
 1. **Cambio 1 — `application.Lister` is a pure pass-through.** The original Task 1 description and `ListInput` struct carried a `IgnoreProjectDefault bool` field with prose that gestured at "Lister falls back to the project resolved from .sophia.yaml". That violated hexagonal layering — config-file resolution is a CLI concern. Fix: removed the field, simplified `ListInput` to `{Project, Status, Limit, Offset}`, moved the `.sophia.yaml`-driven default into `cli/changes.go` with a stderr warning when the resolver fails. **Side effect on already-merged code:** the M8 Task 1 commit (`e9795db` and the subsequent fakes wiring `45fb34f`-style commits) shipped the deprecated field. A follow-up cleanup commit needs to: drop `IgnoreProjectDefault` from `internal/application/lister.go` and its test; update any internal call sites; ensure `cli/changes.go` (Task 5) does the resolver dance instead.
 
 2. **Cambio 2 — `Attacher.AttachFromSnapshot` second entry point.** D-M8-13 originally said "the CLI synthesizes an approval gate and calls `wrapped.OnApprovalGate` BEFORE `Attacher.Attach`", which would have caused two `GetChange` round-trips (one in CLI to scan blocked phases, one inside `Attacher.Attach`). Fix: `Attacher` now exposes `AttachFromSnapshot(ctx, snap, project, sink)` that takes a pre-fetched snapshot and runs only persist + OnSnapshot + Observe. `Attach(ctx, in, sink)` now delegates: it does the `GetChange` and hands the snapshot to `AttachFromSnapshot`. `cli.attachJSONL` does its own `GetChange` (via the new `Deps.Orch` field) and uses `AttachFromSnapshot` directly, eager-arming the timer between the two calls. Tests added: `TestAttacherFromSnapshotSkipsGetChange`, `TestAttacherFromSnapshotNilSnapshotExitCode3`.
+
+   > Discovered during Task 3 execution: the original `TestAttacherFromSnapshotSkipsGetChange` seeded a Running snapshot, but `Runner.Observe` always calls `GetChange` in `refreshAfterStreamEndWithSink` for non-terminal snapshots (per M5/D-M5-03), making `getChangeCalls == 0` unreachable. Fixed by switching the test to a terminal snapshot — `Runner.Observe` short-circuits and no `GetChange` is invoked. The "no double GetChange" guarantee for running snapshots is already covered by the `TestAttacher*` Attach tests.
 
 3. **Cambio 3 — `approvalTimeoutSink.startTimer` is no-reset while armed.** The M7 implementation in `internal/adapters/inbound/cli/timeout_sink.go` (committed in `c45e25e` as part of the M7 milestone tag) stops and restarts the timer on every `OnApprovalGate` call, which would defeat D-M8-13's eager-arm guarantee — a fresh `approval.required` arriving via SSE would reset the t=0 anchor. Fix: when `s.timer != nil && !s.fired`, refresh `s.gate` but skip the `time.AfterFunc` reset. The existing `stopTimer` clears both `s.timer` and `s.gate` on `approval.resolved` / `OnComplete` / `Close`, so a SUBSEQUENT `approval.required` after a resolved correctly starts a fresh timer. New tests in `timeout_sink_test.go`: `TestApprovalTimeoutSinkDoesNotResetOnReGate`, `TestApprovalTimeoutSinkResolvedThenNewGateStartsFresh`, `TestApprovalTimeoutSinkSecondGatePreservesArmTime`. Lands as Sub-task 6.A with its own commit (`fix(cli): approvalTimeoutSink no longer resets on re-emit`).
 

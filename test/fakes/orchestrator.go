@@ -17,6 +17,7 @@ type FakeOrchestrator struct {
 	GetBlockUntilCancel bool
 	TickHook            func(*domain.Change)
 	OnListChanges       func(outbound.ListChangesFilter)
+	OnGetChange         func(domain.ChangeID)
 	changes             map[domain.ChangeID]*domain.Change
 	nextID              int
 }
@@ -56,6 +57,9 @@ func (f *FakeOrchestrator) CreateChange(_ context.Context, in outbound.CreateCha
 }
 
 func (f *FakeOrchestrator) GetChange(ctx context.Context, id domain.ChangeID) (*domain.Change, error) {
+	if f.OnGetChange != nil {
+		f.OnGetChange(id)
+	}
 	if f.GetBlockUntilCancel {
 		<-ctx.Done()
 		return nil, ctx.Err()

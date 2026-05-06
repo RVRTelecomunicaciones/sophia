@@ -110,6 +110,29 @@ func TestStatusFallsBackToGlobalWhenNoProjectScoped(t *testing.T) {
 	}
 }
 
+// Project config parses cleanly and produces a fingerprint, but no run has
+// ever been recorded for this project. status falls through to global.
+func TestStatusProjectConfigOKNoLastFallsThroughToGlobal(t *testing.T) {
+	r, orch, state, git, store := newStatus()
+	orch.SeedChange(&domain.Change{ID: "GLOB", Status: domain.ChangeStatusDone})
+	git.Root = "/repo"
+	cfg := &domain.ProjectConfig{Version: 1, Project: "p"}
+	_ = store.Write(context.Background(), "/repo/.sophia.yaml", cfg)
+	// NOTE: state.SetLast is intentionally not called for this fingerprint.
+	_ = state.SetGlobalLast(context.Background(), "GLOB")
+
+	out, err := r.Resolve(context.Background(), application.ResolveInput{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out.Source != application.StatusSourceGlobal {
+		t.Errorf("Source = %q, want global", out.Source)
+	}
+	if out.Change == nil || out.Change.ID != "GLOB" {
+		t.Errorf("Change = %+v", out.Change)
+	}
+}
+
 func TestStatusFlagArgChangeNotFoundExitCode3(t *testing.T) {
 	r, _, _, _, _ := newStatus()
 	_, err := r.Resolve(context.Background(), application.ResolveInput{
@@ -168,10 +191,7 @@ func TestStatusCtxCanceledDuringFetchExitCode4(t *testing.T) {
 	orch.GetBlockUntilCancel = true
 
 	ctx, cancel := context.WithCancel(context.Background())
-	go func() {
-		time.Sleep(10 * time.Millisecond)
-		cancel()
-	}()
+	cancel() // pre-cancel — fake blocks on ctx.Done() and returns immediately.
 
 	_, err := r.Resolve(ctx, application.ResolveInput{ChangeID: "X"})
 	var exit *application.ExitError
@@ -183,7 +203,7 @@ func TestStatusCtxCanceledDuringFetchExitCode4(t *testing.T) {
 	}
 }
 
-// cambio 5: an internal FetchTimeout (parent ctx still alive) is exit 4.
+// An internal FetchTimeout (parent ctx still alive) is exit 4.
 func TestStatusInternalFetchTimeoutExitCode4(t *testing.T) {
 	orch := fakes.NewFakeOrchestrator()
 	state := fakes.NewFakeStateStore()
@@ -209,8 +229,8 @@ func TestStatusInternalFetchTimeoutExitCode4(t *testing.T) {
 	}
 }
 
-// cambio 4: a malformed .sophia.yaml is fatal — status MUST NOT silently fall
-// through to the global last_change_id.
+// A malformed .sophia.yaml is fatal — status MUST NOT silently fall through
+// to the global last_change_id.
 func TestStatusInvalidProjectYAMLExitCode3(t *testing.T) {
 	r, orch, state, git, store := newStatus()
 	orch.SeedChange(&domain.Change{ID: "GLOB", Status: domain.ChangeStatusDone})
@@ -231,7 +251,8 @@ func TestStatusInvalidProjectYAMLExitCode3(t *testing.T) {
 	}
 }
 
-// cambio 4 (negative): missing .sophia.yaml falls through to global.
+// Missing .sophia.yaml falls through to global (negative pair to the
+// invalid-yaml case above).
 func TestStatusMissingProjectYAMLFallsThroughToGlobal(t *testing.T) {
 	r, orch, state, git, _ := newStatus()
 	orch.SeedChange(&domain.Change{ID: "GLOB", Status: domain.ChangeStatusDone})

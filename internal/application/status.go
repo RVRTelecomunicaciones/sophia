@@ -81,18 +81,29 @@ func (r *StatusReader) Resolve(ctx context.Context, in ResolveInput) (StatusRepo
 
 // locate runs the resolution order: arg → project-scoped → global. A
 // malformed .sophia.yaml (ErrInvalidYAML) is fatal — `status` must not hide
-// config corruption (cambio 4).
+// config corruption. Unexpected tryProject failures (state-store outage,
+// etc.) also surface as exit 3 rather than silently falling through.
 func (r *StatusReader) locate(ctx context.Context, in ResolveInput) (domain.ChangeID, StatusSource, error) {
 	if !in.ChangeID.IsZero() {
 		return in.ChangeID, StatusSourceFlag, nil
 	}
+
 	id, src, err := r.tryProject(ctx)
-	if err == nil && !id.IsZero() {
+	switch {
+	case err == nil && !id.IsZero():
 		return id, src, nil
-	}
-	if err != nil && errors.Is(err, domain.ErrInvalidYAML) {
+	case err == nil:
+		// Project config parses cleanly but no scoped last_change_id yet —
+		// fall through to global.
+	case errors.Is(err, domain.ErrInvalidYAML):
 		return "", "", &ExitError{Code: 3, Err: fmt.Errorf("project config invalid: %w", err)}
+	case errors.Is(err, domain.ErrConfigMissing):
+		// No .sophia.yaml or no git repo — fall through to global.
+	default:
+		// Unexpected error (state-store outage, etc.) — surface, don't hide.
+		return "", "", &ExitError{Code: 3, Err: fmt.Errorf("project resolution: %w", err)}
 	}
+
 	gid, err := r.deps.State.GetGlobalLast(ctx)
 	if err != nil {
 		return "", "", fmt.Errorf("global last: %w", err)
@@ -104,8 +115,8 @@ func (r *StatusReader) locate(ctx context.Context, in ResolveInput) (domain.Chan
 }
 
 // fetch GETs the snapshot from the orchestrator with the configured timeout
-// and maps errors per cambio 5 (parent ctx cancel + internal FetchTimeout
-// → exit 4; ChangeNotFound / Unreachable → exit 3).
+// and maps errors to exit codes: parent ctx cancel and internal FetchTimeout
+// produce exit 4; ChangeNotFound / Unreachable produce exit 3.
 func (r *StatusReader) fetch(ctx context.Context, id domain.ChangeID) (*domain.Change, error) {
 	if r.deps.Orch == nil {
 		return nil, &ExitError{Code: 3, Err: errors.New("status: orchestrator client not wired")}
@@ -127,10 +138,15 @@ func (r *StatusReader) fetch(ctx context.Context, id domain.ChangeID) (*domain.C
 
 // tryProject surfaces ProjectConfigStore.Read errors verbatim so locate can
 // distinguish ErrConfigMissing (fall through) from ErrInvalidYAML (fatal).
+// "Outside a git repo" is normalized to ErrConfigMissing so locate only has
+// to dispatch on the two domain sentinels.
 func (r *StatusReader) tryProject(ctx context.Context) (domain.ChangeID, StatusSource, error) {
 	root, err := r.deps.Git.RepoRoot(ctx, ".")
 	if err != nil {
-		return "", "", err
+		// Not in a git repo (or git not installed): treat as "no project
+		// context" so locate falls through to global. The `doctor` command
+		// is responsible for surfacing a missing git binary separately.
+		return "", "", domain.ErrConfigMissing
 	}
 	cfgPath := filepath.Join(root, ".sophia.yaml")
 	cfg, err := r.deps.ProjectStore.Read(ctx, cfgPath)

@@ -1369,10 +1369,11 @@ func TestStatusInvalidProjectYAMLExitCode3(t *testing.T) {
 	orch.SeedChange(&domain.Change{ID: "GLOB", Status: domain.ChangeStatusDone})
 	_ = state.SetGlobalLast(context.Background(), "GLOB")
 	git.Root = "/repo"
-	// ProjectStore.Read returns ErrInvalidYAML for /repo/.sophia.yaml.
-	store.ReadErr = map[string]error{
-		"/repo/.sophia.yaml": fmt.Errorf("yaml: line 3: %w", domain.ErrInvalidYAML),
-	}
+	// FakeProjectConfigStore.ReadErr is a single error (global to the fake);
+	// applies to every Read call. That's fine for this test — only one Read
+	// happens. Wrap ErrInvalidYAML so errors.Is can resolve through the
+	// richer message a real yamlconfig adapter would produce.
+	store.ReadErr = fmt.Errorf("yaml: line 3: %w", domain.ErrInvalidYAML)
 
 	_, err := r.Resolve(context.Background(), application.ResolveInput{})
 	var exit *application.ExitError
@@ -1406,16 +1407,7 @@ func TestStatusMissingProjectYAMLFallsThroughToGlobal(t *testing.T) {
 }
 ```
 
-> **Note on `ProjectConfigStore.ReadErr`:** the YAML-invalid test references `FakeProjectConfigStore.ReadErr map[string]error`. If the fake doesn't yet model per-path Read errors, append it inline as part of this task. Concretely on `test/fakes/projectconfig.go`:
->
-> ```go
-> // field on FakeProjectConfigStore:
-> ReadErr map[string]error
-> ```
->
-> Update Read to honor it: `if e, ok := f.ReadErr[path]; ok { return nil, e }` before the file-store lookup.
->
-> **Sentinel reuse:** `domain.ErrInvalidYAML` already exists in `internal/domain/errors.go` (verified pre-Task-3). The `yamlconfig` adapter (`internal/adapters/outbound/yamlconfig/project.go:67`) returns it as a bare sentinel on parse failure (no `%w` wrapping at the source). For tests we wrap it with `fmt.Errorf("yaml: line 3: %w", domain.ErrInvalidYAML)` so `errors.Is` resolves through richer messages. Do NOT introduce a separate `ErrConfigInvalid` — the existing `ErrInvalidYAML` covers parse errors and missing required fields.
+> **Sentinel and fake reuse (verified pre-Task-4):** `domain.ErrInvalidYAML` already exists in `internal/domain/errors.go`. The `yamlconfig` adapter (`internal/adapters/outbound/yamlconfig/project.go:67`) returns it as a bare sentinel on parse failure. `FakeProjectConfigStore.ReadErr` is a single `error` field (global to the fake), already used by `configresolver_test.go` and `initializer_test.go` — do NOT change it to a map; per-path errors aren't needed for `status` tests because each test triggers exactly one Read. Wrap the sentinel via `fmt.Errorf("yaml: line 3: %w", domain.ErrInvalidYAML)` so `errors.Is` resolves through richer messages. Do NOT introduce `ErrConfigInvalid` — `ErrInvalidYAML` covers parse errors and missing required fields.
 
 - [ ] **Step 2: Run test**
 

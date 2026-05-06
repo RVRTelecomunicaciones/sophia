@@ -16,13 +16,18 @@ type fakeSender struct {
 	mu      sync.Mutex
 	msgs    []any
 	release chan struct{} // nil = unblocked; non-nil unbuffered = blocked until close
+	entered chan struct{} // closed once when Send() is first called
+	once    sync.Once
 }
 
 func newFakeSender() *fakeSender {
-	return &fakeSender{}
+	return &fakeSender{entered: make(chan struct{})}
 }
 
 func (s *fakeSender) Send(m any) {
+	// Signal that Send has been entered at least once.
+	s.once.Do(func() { close(s.entered) })
+
 	s.mu.Lock()
 	r := s.release
 	s.mu.Unlock()
@@ -57,6 +62,18 @@ func (s *fakeSender) Release() {
 	s.mu.Unlock()
 	if r != nil {
 		close(r)
+	}
+}
+
+// WaitEntered blocks until Send has been called at least once, or fails the
+// test if it doesn't happen within timeout. Use after pushing one event with
+// the sender blocked to confirm the worker has dequeued and is wedged.
+func (s *fakeSender) WaitEntered(t *testing.T, timeout time.Duration) {
+	t.Helper()
+	select {
+	case <-s.entered:
+	case <-time.After(timeout):
+		t.Fatalf("worker did not enter Send within %s", timeout)
 	}
 }
 
@@ -155,12 +172,13 @@ func TestBridgeDropsHeartbeatFirstUnderPressure(t *testing.T) {
 	b := tui.NewBridge(tui.BridgeConfig{Sender: s})
 	defer b.Close() //nolint:errcheck
 
-	// Fill the buffer (cap 256). The bridge runs Send on a worker goroutine,
-	// so the first event is consumed immediately and gets stuck in Send;
-	// subsequent events queue up in the channel until cap.
-	// Push 257 to guarantee the buffer (256 slots) is full regardless of
-	// whether the worker has dequeued one item yet.
-	for i := 0; i < 257; i++ {
+	// Push 1 event and wait for the worker to dequeue + block in Send.
+	// This confirms the worker is wedged, so the queue has exactly 0 items.
+	_ = b.OnEvent(context.Background(), domain.Event{Type: "agent.started", EventID: ""})
+	s.WaitEntered(t, time.Second)
+
+	// Now fill the queue to exactly cap (256 slots).
+	for i := 0; i < 256; i++ {
 		_ = b.OnEvent(context.Background(), domain.Event{Type: "agent.started", EventID: ""})
 	}
 
@@ -178,8 +196,13 @@ func TestBridgeNeverDropsPhaseEvents(t *testing.T) {
 	b := tui.NewBridge(tui.BridgeConfig{Sender: s})
 	defer b.Close() //nolint:errcheck
 
+	// Push 1 event and wait for the worker to dequeue + block in Send.
+	// This confirms the worker is wedged, so the queue has exactly 0 items.
+	_ = b.OnEvent(context.Background(), domain.Event{Type: "agent.token"})
+	s.WaitEntered(t, time.Second)
+
 	// Fill buffer with low-priority events so phase.* must displace them.
-	for i := 0; i < 257; i++ {
+	for i := 0; i < 256; i++ {
 		_ = b.OnEvent(context.Background(), domain.Event{Type: "agent.token"})
 	}
 
@@ -214,7 +237,13 @@ func TestBridgeNeverDropsApprovalEvents(t *testing.T) {
 	b := tui.NewBridge(tui.BridgeConfig{Sender: s})
 	defer b.Close() //nolint:errcheck
 
-	for i := 0; i < 257; i++ {
+	// Push 1 event and wait for the worker to dequeue + block in Send.
+	// This confirms the worker is wedged, so the queue has exactly 0 items.
+	_ = b.OnEvent(context.Background(), domain.Event{Type: "agent.token"})
+	s.WaitEntered(t, time.Second)
+
+	// Fill queue to exactly cap (256 slots).
+	for i := 0; i < 256; i++ {
 		_ = b.OnEvent(context.Background(), domain.Event{Type: "agent.token"})
 	}
 	if err := b.OnApprovalGate(context.Background(), domain.ApprovalGate{URL: "http://gate"}); err != nil {
@@ -242,9 +271,16 @@ func TestBridgeDropsCounterIncrementsWhenAtCapacity(t *testing.T) {
 	b := tui.NewBridge(tui.BridgeConfig{Sender: s})
 	defer b.Close() //nolint:errcheck
 
-	for i := 0; i < 257; i++ {
+	// Push 1 event and wait for the worker to dequeue + block in Send.
+	// This confirms the worker is wedged, so the queue has exactly 0 items.
+	_ = b.OnEvent(context.Background(), domain.Event{Type: "agent.token"})
+	s.WaitEntered(t, time.Second)
+
+	// Fill queue to exactly cap (256 slots).
+	for i := 0; i < 256; i++ {
 		_ = b.OnEvent(context.Background(), domain.Event{Type: "agent.token"})
 	}
+	// Trigger event — queue is at cap, so this must drop.
 	_ = b.OnEvent(context.Background(), domain.Event{Type: "agent.token"})
 
 	if got := b.Drops(); got != 1 {

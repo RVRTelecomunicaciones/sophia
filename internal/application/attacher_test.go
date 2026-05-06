@@ -155,13 +155,17 @@ func TestAttacherCtxCancelDuringObserveExitCode4(t *testing.T) {
 
 	orch.SeedChange(&domain.Change{ID: "ATT-RUN", Project: "p", Status: domain.ChangeStatusRunning})
 
-	ctx, cancel := context.WithCancel(context.Background())
+	subscribed := make(chan struct{})
 	stream.OnSubscribe = func(_ outbound.StreamTarget) {
-		go func() {
-			time.Sleep(20 * time.Millisecond)
-			cancel()
-		}()
+		close(subscribed)
+		// Never push events — the subscribe channel stays open until ctx fires.
 	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	go func() {
+		<-subscribed
+		cancel()
+	}()
 
 	_, err := a.Attach(ctx, application.AttachInput{
 		ChangeID: "ATT-RUN",

@@ -255,17 +255,28 @@ func (r *Runner) finishWithSink(ctx context.Context, res RunResult, st domain.Ch
 }
 
 func (r *Runner) persistChangeID(ctx context.Context, project string, id domain.ChangeID) error {
-	if err := r.deps.State.SetGlobalLast(ctx, id); err != nil {
+	return persistChangeID(ctx, r.deps.State, r.deps.Git, project, id)
+}
+
+// persistChangeID writes id to global last_change_id and, when in a git repo
+// with a non-empty project name, also to the project-scoped record. Used by
+// both Runner.Run (after CreateChange) and Attacher.Attach (after GetChange)
+// per spec §3.5. Outside a repo or with empty project, only the global
+// record is updated and a nil error is returned (best-effort).
+func persistChangeID(ctx context.Context, state outbound.StateStore, git outbound.GitInspector, project string, id domain.ChangeID) error {
+	if err := state.SetGlobalLast(ctx, id); err != nil {
 		return fmt.Errorf("global last: %w", err)
 	}
-	root, err := r.deps.Git.RepoRoot(ctx, ".")
+	root, err := git.RepoRoot(ctx, ".")
 	if err != nil {
-		// Outside a repo — keep only the global record. Not fatal.
-		return nil
+		return nil // outside a repo — global-only is fine
 	}
-	remote, _ := r.deps.Git.RemoteURL(ctx, root)
+	if project == "" {
+		return nil // no project context — global-only is fine
+	}
+	remote, _ := git.RemoteURL(ctx, root)
 	fp := domain.ComputeFingerprint(project, root, remote)
-	if err := r.deps.State.SetLast(ctx, fp, id); err != nil {
+	if err := state.SetLast(ctx, fp, id); err != nil {
 		return fmt.Errorf("project last: %w", err)
 	}
 	return nil

@@ -40,17 +40,11 @@ type Attacher struct {
 // NewAttacher constructs an Attacher.
 func NewAttacher(d AttacherDeps) *Attacher { return &Attacher{deps: d} }
 
-// Attach fetches the snapshot, then delegates to AttachFromSnapshot. The sink
-// argument lets the CLI pick TUI bridge vs JSONL at command time, just like
-// RunnerFactory does for `run`.
-//
-// Errors map to spec §2.3 exit codes:
-//
-//   - empty ChangeID                       → exit 3
-//   - GetChange ErrChangeNotFound (404)    → exit 3
-//   - GetChange transport / 5xx            → exit 3 (orchestrator unreachable)
-//   - GetChange ctx canceled / deadline    → exit 4
-//   - Observe exit codes (0/1/4)           → forwarded as-is
+// Attach observes an existing Change through to terminal status. Validates
+// changeID, fetches the snapshot via OrchestratorClient.GetChange, then
+// delegates to AttachFromSnapshot. Returns RunResult and either nil (DONE)
+// or *ExitError with the spec §2.3 code (3 for ChangeNotFound / unreachable
+// / wiring error, 4 for ctx-cancel / deadline, 1 for BLOCKED/FAILED).
 func (a *Attacher) Attach(ctx context.Context, in AttachInput, sink inbound.EventSink) (RunResult, error) {
 	if a.deps.Runner == nil {
 		return RunResult{}, &ExitError{Code: 3, Err: errors.New("attach: runner not wired")}
@@ -62,31 +56,26 @@ func (a *Attacher) Attach(ctx context.Context, in AttachInput, sink inbound.Even
 	snap, err := a.deps.Orch.GetChange(ctx, in.ChangeID)
 	if err != nil {
 		// sink.Close is the caller's responsibility on the AttachFromSnapshot
-		// path; here we close on the GetChange-failure branch only.
-		defer sink.Close() //nolint:errcheck
+		// path; here we close on the GetChange-failure branch only. Both
+		// branches return immediately, so direct calls beat defer.
 		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
 			_ = sink.OnError(context.WithoutCancel(ctx), err)
+			_ = sink.Close()
 			return RunResult{}, &ExitError{Code: 4, Err: err}
 		}
 		_ = sink.OnError(ctx, err)
+		_ = sink.Close()
 		return RunResult{}, &ExitError{Code: 3, Err: fmt.Errorf("get change: %w", err)}
 	}
 
 	return a.AttachFromSnapshot(ctx, snap, in.Project, sink)
 }
 
-// AttachFromSnapshot is the second entry point for `sophia attach`. It accepts
-// a pre-fetched snapshot — the CLI's `attachJSONL` uses this to do its own
-// `GetChange`, scan for `PhaseStatusBlocked` to eager-arm `approvalTimeoutSink`
-// (D-M8-13), and only then hand the snapshot to the Attacher. This avoids a
-// double `GetChange` round-trip while preserving the "approval-timeout starts
-// at attach time" guarantee.
-//
-// Behavior matches Attach minus the GetChange + 404/timeout handling:
-//
-//  1. persistChangeID (spec §3.5)
-//  2. sink.OnSnapshot
-//  3. Runner.Observe
+// AttachFromSnapshot is the second entry point used by cli.attachJSONL
+// (D-M8-13) to skip a redundant GetChange when the CLI must scan the
+// snapshot for blocked phases and eager-arm approvalTimeoutSink before
+// observation begins. Owns sink.Close on every exit path; callers MUST NOT
+// double-close.
 func (a *Attacher) AttachFromSnapshot(ctx context.Context, snap *domain.Change, project string, sink inbound.EventSink) (RunResult, error) {
 	if a.deps.Runner == nil {
 		return RunResult{}, &ExitError{Code: 3, Err: errors.New("attach: runner not wired")}
@@ -99,7 +88,7 @@ func (a *Attacher) AttachFromSnapshot(ctx context.Context, snap *domain.Change, 
 
 	res := RunResult{ChangeID: snap.ID}
 
-	if err := a.persistChangeID(ctx, project, snap.ID); err != nil {
+	if err := persistChangeID(ctx, a.deps.State, a.deps.Git, project, snap.ID); err != nil {
 		// Persistence failure is NOT fatal — surface as a sink error and continue.
 		_ = sink.OnError(ctx, err)
 	}
@@ -113,28 +102,4 @@ func (a *Attacher) AttachFromSnapshot(ctx context.Context, snap *domain.Change, 
 	}
 
 	return a.deps.Runner.Observe(ctx, res, sink)
-}
-
-// persistChangeID mirrors Runner.persistChangeID exactly (spec §3.5).
-// Duplicated rather than shared because Runner.persistChangeID is unexported
-// and the shape is small enough that exposing it would overgeneralize the
-// API.
-func (a *Attacher) persistChangeID(ctx context.Context, project string, id domain.ChangeID) error {
-	if err := a.deps.State.SetGlobalLast(ctx, id); err != nil {
-		return fmt.Errorf("global last: %w", err)
-	}
-	root, err := a.deps.Git.RepoRoot(ctx, ".")
-	if err != nil {
-		// Outside a repo — keep only the global record. Not fatal.
-		return nil
-	}
-	if project == "" {
-		return nil
-	}
-	remote, _ := a.deps.Git.RemoteURL(ctx, root)
-	fp := domain.ComputeFingerprint(project, root, remote)
-	if err := a.deps.State.SetLast(ctx, fp, id); err != nil {
-		return fmt.Errorf("project last: %w", err)
-	}
-	return nil
 }

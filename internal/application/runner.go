@@ -123,19 +123,38 @@ func (r *Runner) Run(ctx context.Context, in RunInput) (RunResult, error) {
 	}
 
 	if created.Status.IsTerminal() {
-		return r.finish(ctx, res, created.Status)
+		res.FinalStatus = created.Status
 	}
 
-	final, err := r.stream(ctx, created.ID)
+	return r.Observe(ctx, res, r.deps.Sink)
+}
+
+// Observe drives the post-create observation loop on an existing or just-
+// created Change. The caller is responsible for calling OnSnapshot with the
+// initial Change snapshot and persisting last_change_id BEFORE calling
+// Observe. Observe will subscribe to SSE, dispatch events to the sink, and
+// on stream-end refresh the snapshot to determine terminal status.
+//
+// If res.FinalStatus is already terminal, Observe short-circuits to
+// finishWithSink without subscribing.
+//
+// Returns RunResult with FinalStatus populated. Error is nil on DONE,
+// *ExitError on other terminal/transient/ctx-canceled paths.
+func (r *Runner) Observe(ctx context.Context, res RunResult, sink inbound.EventSink) (RunResult, error) {
+	if res.FinalStatus.IsTerminal() {
+		return r.finishWithSink(ctx, res, res.FinalStatus, sink)
+	}
+
+	final, err := r.streamWithSink(ctx, res.ChangeID, sink)
 	if err != nil {
 		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
-			_ = r.deps.Sink.OnError(context.WithoutCancel(ctx), err)
+			_ = sink.OnError(context.WithoutCancel(ctx), err)
 			return res, &ExitError{Code: 4, Err: err}
 		}
-		_ = r.deps.Sink.OnError(ctx, err)
+		_ = sink.OnError(ctx, err)
 		return res, &ExitError{Code: 4, Err: err}
 	}
-	return r.finish(ctx, res, final)
+	return r.finishWithSink(ctx, res, final, sink)
 }
 
 // stream subscribes to the SSE feed for id and forwards events to the sink
@@ -143,6 +162,10 @@ func (r *Runner) Run(ctx context.Context, in RunInput) (RunResult, error) {
 // exhausted) or ctx is canceled. After the channel closes, it refreshes the
 // change snapshot to determine terminal status.
 func (r *Runner) stream(ctx context.Context, id domain.ChangeID) (domain.ChangeStatus, error) {
+	return r.streamWithSink(ctx, id, r.deps.Sink)
+}
+
+func (r *Runner) streamWithSink(ctx context.Context, id domain.ChangeID, sink inbound.EventSink) (domain.ChangeStatus, error) {
 	ch, stop, err := r.deps.EventStream.Subscribe(ctx, outbound.StreamTarget{ChangeID: id}, outbound.SubscribeOptions{})
 	if err != nil {
 		return "", fmt.Errorf("subscribe: %w", err)
@@ -155,9 +178,9 @@ func (r *Runner) stream(ctx context.Context, id domain.ChangeID) (domain.ChangeS
 			return "", ctx.Err()
 		case ev, ok := <-ch:
 			if !ok {
-				return r.refreshAfterStreamEnd(ctx, id)
+				return r.refreshAfterStreamEndWithSink(ctx, id, sink)
 			}
-			r.dispatchEvent(ctx, ev)
+			r.dispatchEventWithSink(ctx, ev, sink)
 		}
 	}
 }
@@ -167,16 +190,20 @@ func (r *Runner) stream(ctx context.Context, id domain.ChangeID) (domain.ChangeS
 // translated into OnApprovalGate AND emitted via OnEvent (D-M5-02).
 // OnEvent always fires first; OnApprovalGate follows for approval.required.
 func (r *Runner) dispatchEvent(ctx context.Context, ev domain.Event) {
+	r.dispatchEventWithSink(ctx, ev, r.deps.Sink)
+}
+
+func (r *Runner) dispatchEventWithSink(ctx context.Context, ev domain.Event, sink inbound.EventSink) {
 	if ev.Type == "heartbeat" {
 		return
 	}
-	if err := r.deps.Sink.OnEvent(ctx, ev); err != nil {
-		_ = r.deps.Sink.OnError(ctx, err)
+	if err := sink.OnEvent(ctx, ev); err != nil {
+		_ = sink.OnError(ctx, err)
 	}
 	if ev.Type == "approval.required" {
 		gate := approvalGateFromEvent(ev)
-		if err := r.deps.Sink.OnApprovalGate(ctx, gate); err != nil {
-			_ = r.deps.Sink.OnError(ctx, err)
+		if err := sink.OnApprovalGate(ctx, gate); err != nil {
+			_ = sink.OnError(ctx, err)
 		}
 	}
 }
@@ -205,14 +232,18 @@ func approvalGateFromEvent(ev domain.Event) domain.ApprovalGate {
 // Per D-M5-03 this is the only place mid-run snapshots happen — not on every
 // reconnect.
 func (r *Runner) refreshAfterStreamEnd(ctx context.Context, id domain.ChangeID) (domain.ChangeStatus, error) {
+	return r.refreshAfterStreamEndWithSink(ctx, id, r.deps.Sink)
+}
+
+func (r *Runner) refreshAfterStreamEndWithSink(ctx context.Context, id domain.ChangeID, sink inbound.EventSink) (domain.ChangeStatus, error) {
 	rctx, cancel := context.WithTimeout(ctx, r.opts.SnapshotRefreshTimeout)
 	defer cancel()
 	snap, err := r.deps.Orch.GetChange(rctx, id)
 	if err != nil {
 		return "", fmt.Errorf("post-stream snapshot: %w", err)
 	}
-	if err := r.deps.Sink.OnSnapshot(ctx, snap); err != nil {
-		_ = r.deps.Sink.OnError(ctx, err)
+	if err := sink.OnSnapshot(ctx, snap); err != nil {
+		_ = sink.OnError(ctx, err)
 	}
 	if !snap.Status.IsTerminal() {
 		return "", fmt.Errorf("stream ended before terminal status (current=%q)", snap.Status)
@@ -221,8 +252,12 @@ func (r *Runner) refreshAfterStreamEnd(ctx context.Context, id domain.ChangeID) 
 }
 
 func (r *Runner) finish(ctx context.Context, res RunResult, st domain.ChangeStatus) (RunResult, error) {
+	return r.finishWithSink(ctx, res, st, r.deps.Sink)
+}
+
+func (r *Runner) finishWithSink(ctx context.Context, res RunResult, st domain.ChangeStatus, sink inbound.EventSink) (RunResult, error) {
 	res.FinalStatus = st
-	_ = r.deps.Sink.OnComplete(ctx, st)
+	_ = sink.OnComplete(ctx, st)
 	switch st {
 	case domain.ChangeStatusDone:
 		return res, nil

@@ -336,3 +336,84 @@ func TestRunnerCancellationFiresOnError(t *testing.T) {
 		t.Error("expected OnError to fire on ctx cancellation")
 	}
 }
+
+func TestObserveCallsOnSnapshotThenStreamThenFinish(t *testing.T) {
+	orch := fakes.NewFakeOrchestrator()
+	stream := fakes.NewFakeEventStream()
+	sink := &recordingSink{}
+	r, _ := newRunner(orch, stream, sink)
+
+	existing := &domain.Change{ID: "ATTACH-1", Project: "p", Status: domain.ChangeStatusRunning}
+	orch.SeedChange(existing)
+
+	stream.OnSubscribe = func(target outbound.StreamTarget) {
+		if target.ChangeID != existing.ID {
+			t.Errorf("Subscribe target = %q, want %q", target.ChangeID, existing.ID)
+		}
+		go func() {
+			stream.Push(target, domain.Event{Type: "phase.completed", EventID: "evt-1"})
+			orch.SetTerminal(target.ChangeID, domain.ChangeStatusDone)
+			stream.Close(target)
+		}()
+	}
+
+	res, err := r.Observe(context.Background(), application.RunResult{ChangeID: existing.ID}, sink)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.FinalStatus != domain.ChangeStatusDone {
+		t.Errorf("FinalStatus = %q, want done", res.FinalStatus)
+	}
+	if sink.Final != domain.ChangeStatusDone {
+		t.Errorf("OnComplete final = %q", sink.Final)
+	}
+}
+
+func TestObserveTerminalSnapshotShortCircuits(t *testing.T) {
+	orch := fakes.NewFakeOrchestrator()
+	stream := fakes.NewFakeEventStream()
+	sink := &recordingSink{}
+	r, _ := newRunner(orch, stream, sink)
+
+	subscribed := false
+	stream.OnSubscribe = func(_ outbound.StreamTarget) { subscribed = true }
+
+	res, err := r.Observe(context.Background(), application.RunResult{
+		ChangeID:    "TERM-1",
+		FinalStatus: domain.ChangeStatusDone,
+	}, sink)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if subscribed {
+		t.Error("Observe should not subscribe when caller signals terminal status")
+	}
+	if res.FinalStatus != domain.ChangeStatusDone {
+		t.Errorf("FinalStatus = %q", res.FinalStatus)
+	}
+	if sink.Final != domain.ChangeStatusDone {
+		t.Errorf("OnComplete should still fire even on the short-circuit path")
+	}
+}
+
+func TestObserveExitCode4OnStreamEndsWithoutTerminal(t *testing.T) {
+	orch := fakes.NewFakeOrchestrator()
+	stream := fakes.NewFakeEventStream()
+	sink := &recordingSink{}
+	r, _ := newRunner(orch, stream, sink)
+
+	orch.SeedChange(&domain.Change{ID: "X", Status: domain.ChangeStatusRunning})
+
+	stream.OnSubscribe = func(target outbound.StreamTarget) {
+		go stream.Close(target) // close immediately, no events, no terminal
+	}
+
+	_, err := r.Observe(context.Background(), application.RunResult{ChangeID: "X"}, sink)
+	var exit *application.ExitError
+	if !errors.As(err, &exit) {
+		t.Fatalf("expected ExitError, got %v", err)
+	}
+	if exit.Code != 4 {
+		t.Errorf("Code = %d, want 4", exit.Code)
+	}
+}

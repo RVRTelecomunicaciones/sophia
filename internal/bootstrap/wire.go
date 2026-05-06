@@ -11,6 +11,7 @@ import (
 
 	"github.com/RVRTelecomunicaciones/sophia-cli/internal/adapters/inbound/cli"
 	"github.com/RVRTelecomunicaciones/sophia-cli/internal/adapters/outbound/composeexec"
+	"github.com/RVRTelecomunicaciones/sophia-cli/internal/adapters/outbound/osbrowser"
 	"github.com/RVRTelecomunicaciones/sophia-cli/internal/adapters/outbound/filestate"
 	"github.com/RVRTelecomunicaciones/sophia-cli/internal/adapters/outbound/gitcli"
 	"github.com/RVRTelecomunicaciones/sophia-cli/internal/adapters/outbound/orchestratorhttp"
@@ -103,6 +104,8 @@ func New(cfg Config) (*cobra.Command, error) {
 		Heartbeat:  ssestream.DefaultHeartbeat,
 	})
 
+	browser := osbrowser.New(osbrowser.Config{})
+
 	// RunnerFactory builds a Runner with the caller-provided sink. The sink is
 	// chosen at command time: TUI bridge in default mode, jsonsink in --no-tui --json mode.
 	runnerFactory := func(sink inbound.EventSink) *application.Runner {
@@ -125,6 +128,7 @@ func New(cfg Config) (*cobra.Command, error) {
 		StatusReader:   statusReader,
 		RunnerFactory:  runnerFactory,
 		Resolver:       resolver,
+		Browser:        browser,
 		UserConfigPath: userConfigPath,
 		Version:        info.Version,
 		Commit:         info.Commit,

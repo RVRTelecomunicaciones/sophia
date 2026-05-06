@@ -7,6 +7,7 @@ import (
 
 	"github.com/RVRTelecomunicaciones/sophia-cli/internal/application"
 	"github.com/RVRTelecomunicaciones/sophia-cli/internal/ports/inbound"
+	"github.com/RVRTelecomunicaciones/sophia-cli/internal/ports/outbound"
 )
 
 // RunnerFactory builds a *application.Runner with the caller-provided sink.
@@ -30,6 +31,10 @@ type Deps struct {
 	// TUIOutput is the writer the TUI program renders to. Defaults to
 	// os.Stdout. Tests inject a buffer.
 	TUIOutput io.Writer
+
+	// Browser is the outbound.Browser passed to the TUI program for [O].
+	// Bootstrap injects an osbrowser instance; tests inject FakeBrowser.
+	Browser outbound.Browser
 
 	UserConfigPath string
 

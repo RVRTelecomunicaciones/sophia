@@ -123,7 +123,10 @@ func runJSONL(parentCtx context.Context, d Deps, input application.RunInput, app
 func runTUI(parentCtx context.Context, d Deps, input application.RunInput) error {
 	output := chooseTUIOutput(d)
 
-	prog, err := tui.NewProgram(tui.ProgramConfig{Output: output})
+	prog, err := tui.NewProgram(tui.ProgramConfig{
+		Output:  output,
+		Browser: d.Browser,
+	})
 	if err != nil {
 		return fmt.Errorf("run: tui init: %w", err)
 	}

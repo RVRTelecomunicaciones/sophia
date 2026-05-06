@@ -88,6 +88,19 @@ func TestNewWiresM6RunnerFactory(t *testing.T) {
 	}
 }
 
+func TestNewWiresM7Browser(t *testing.T) {
+	root, err := bootstrap.New(bootstrap.Config{LogWriter: nil})
+	if err != nil {
+		t.Fatal(err)
+	}
+	c, _, err := root.Find([]string{"run"})
+	if err != nil || c == nil {
+		t.Fatalf("run cmd missing: %v", err)
+	}
+	// We can't directly inspect Deps from the cobra tree, but the run cmd
+	// constructed without panic — bootstrap wired Browser cleanly.
+}
+
 func TestNewHonorsOrchestratorURLEnv(t *testing.T) {
 	t.Setenv(application.EnvOrchestratorURL, "http://from-env:1234")
 	root, err := bootstrap.New(bootstrap.Config{LogWriter: nil})

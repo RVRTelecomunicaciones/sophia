@@ -124,6 +124,10 @@ func NewBridge(cfg BridgeConfig) *Bridge {
 
 func (b *Bridge) OnSnapshot(_ context.Context, c *domain.Change) error {
 	cp := *c
+	if len(c.Phases) > 0 {
+		cp.Phases = make([]domain.Phase, len(c.Phases))
+		copy(cp.Phases, c.Phases)
+	}
 	b.enqueue(queued{category: DropCategoryOther, priority: true, msg: SnapshotMsg{Change: &cp}})
 	return nil
 }
@@ -258,9 +262,12 @@ func (b *Bridge) recordDrop(cat DropCategory) {
 // worker drains the queue and calls Sender.Send for each message.
 // It holds no lock while calling Send so a slow/wedged sender does not block
 // enqueuers — they continue filling the queue and the drop policy kicks in.
-// After each Send it checks whether the bridge has been closed; if so it exits
-// even if the queue is non-empty (those events are silently discarded — the
-// bridge is shutting down).
+//
+// Shutdown behaviour: after each Send, if Close has been called the worker
+// prunes all non-priority items from the queue (counting them as drops) and
+// exits as soon as no priority items remain. This guarantees that in-flight
+// CompleteMsg/ErrorMsg/SnapshotMsg (all priority=true) are delivered even when
+// Close is called immediately after enqueueing them.
 func (b *Bridge) worker() {
 	for {
 		b.mu.Lock()
@@ -277,13 +284,26 @@ func (b *Bridge) worker() {
 
 		b.sender.Send(q.msg)
 
-		// Check for shutdown after every Send so we exit promptly when the
-		// queue drains following a Close call.
-		select {
-		case <-b.done:
-			return
-		default:
+		// After each Send, check for shutdown. If Close was called, prune
+		// non-priority items from the queue and exit once none remain.
+		b.mu.Lock()
+		if b.closed {
+			pruned := b.queue[:0]
+			for _, item := range b.queue {
+				if item.priority {
+					pruned = append(pruned, item)
+				} else {
+					b.recordDrop(item.category)
+				}
+			}
+			b.queue = pruned
+			if len(b.queue) == 0 {
+				b.mu.Unlock()
+				return
+			}
+			// Priority items still pending — keep draining.
 		}
+		b.mu.Unlock()
 	}
 }
 

@@ -13,21 +13,21 @@ import (
 // fakeSender records every tea.Msg the bridge forwards. It is goroutine-safe
 // because the bridge is allowed to call Send from any goroutine.
 type fakeSender struct {
-	mu   sync.Mutex
-	msgs []any
-	// block, when true, makes Send block until release() is called. Used to
-	// simulate a wedged Bubble Tea program so the buffer fills up.
-	block   bool
-	release chan struct{}
+	mu      sync.Mutex
+	msgs    []any
+	release chan struct{} // nil = unblocked; non-nil unbuffered = blocked until close
 }
 
 func newFakeSender() *fakeSender {
-	return &fakeSender{release: make(chan struct{})}
+	return &fakeSender{}
 }
 
 func (s *fakeSender) Send(m any) {
-	if s.block {
-		<-s.release
+	s.mu.Lock()
+	r := s.release
+	s.mu.Unlock()
+	if r != nil {
+		<-r
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -42,8 +42,23 @@ func (s *fakeSender) Messages() []any {
 	return out
 }
 
-func (s *fakeSender) Block()   { s.block = true }
-func (s *fakeSender) Release() { close(s.release) }
+func (s *fakeSender) Block() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.release == nil {
+		s.release = make(chan struct{})
+	}
+}
+
+func (s *fakeSender) Release() {
+	s.mu.Lock()
+	r := s.release
+	s.release = nil
+	s.mu.Unlock()
+	if r != nil {
+		close(r)
+	}
+}
 
 func TestBridgeForwardsSnapshotAsTeaMsg(t *testing.T) {
 	s := newFakeSender()
@@ -285,4 +300,67 @@ func waitDrain(t *testing.T, b *tui.Bridge, timeout time.Duration) {
 		time.Sleep(2 * time.Millisecond)
 	}
 	t.Fatalf("bridge did not drain in %s (pending=%d)", timeout, b.Pending())
+}
+
+// Regression for High/Medium reviewer concern: pending CompleteMsg must be
+// delivered even if Close fires before the worker has drained the queue.
+func TestBridgeDrainsPriorityItemsOnClose(t *testing.T) {
+	s := newFakeSender()
+	b := tui.NewBridge(tui.BridgeConfig{Sender: s})
+
+	// Enqueue a non-priority event AND a priority OnComplete in quick succession.
+	_ = b.OnEvent(context.Background(), domain.Event{Type: "agent.token"})
+	_ = b.OnComplete(context.Background(), domain.ChangeStatusDone)
+
+	// Immediately close. The worker may or may not have drained either yet.
+	if err := b.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	// Wait for the worker to wind down (it must finish the priority send).
+	deadline := time.Now().Add(time.Second)
+	for time.Now().Before(deadline) {
+		gotComplete := false
+		for _, m := range s.Messages() {
+			if _, ok := m.(tui.CompleteMsg); ok {
+				gotComplete = true
+				break
+			}
+		}
+		if gotComplete {
+			return
+		}
+		time.Sleep(2 * time.Millisecond)
+	}
+	t.Fatalf("CompleteMsg never delivered — queued msgs after Close: %v", s.Messages())
+}
+
+// Regression: OnSnapshot must deep-copy the Phases slice. If the caller
+// mutates c.Phases[i] after returning from OnSnapshot, the queued
+// SnapshotMsg must NOT see the mutation.
+func TestBridgeOnSnapshotDeepCopiesPhases(t *testing.T) {
+	s := newFakeSender()
+	b := tui.NewBridge(tui.BridgeConfig{Sender: s})
+	defer b.Close() //nolint:errcheck
+
+	change := &domain.Change{
+		ID:     domain.ChangeID("01HX"),
+		Status: domain.ChangeStatusRunning,
+		Phases: []domain.Phase{
+			{ID: "p-init", Type: domain.PhaseInit, Status: domain.PhaseStatusRunning},
+		},
+	}
+	if err := b.OnSnapshot(context.Background(), change); err != nil {
+		t.Fatal(err)
+	}
+
+	// Mutate the caller's slice immediately after return.
+	change.Phases[0].Status = domain.PhaseStatusDone
+
+	got := waitMessages(t, s, 1, time.Second)
+	sm := got[0].(tui.SnapshotMsg)
+	if sm.Change.Phases[0].Status != domain.PhaseStatusRunning {
+		t.Errorf("queued snapshot mutated by caller: phase[0].Status = %q, want running",
+			sm.Change.Phases[0].Status)
+	}
 }

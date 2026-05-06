@@ -11,6 +11,10 @@ type Deps struct {
 	Provisioner  *application.Provisioner
 	Initializer  *application.Initializer
 	StatusReader *application.StatusReader
+	Runner       *application.Runner
+	Resolver     *application.ConfigResolver
+
+	UserConfigPath string // optional; passed to ConfigResolver
 
 	Version   string
 	Commit    string
@@ -35,7 +39,7 @@ state.`,
 	root.AddCommand(newInitCmd(d))
 	root.AddCommand(newStartCmd(d))
 	root.AddCommand(newStopCmd(d))
-	root.AddCommand(newStubCmd("run", "Create and observe a Change", "M4"))
+	root.AddCommand(newRunCmd(d))
 	root.AddCommand(newStubCmd("attach", "Attach to an existing Change", "M8"))
 	root.AddCommand(newStatusCmd(d))
 	root.AddCommand(newStubCmd("changes", "List recent Changes", "M8"))

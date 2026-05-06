@@ -1131,7 +1131,7 @@ The HTTP call applies a timeout (`opts.FetchTimeout`, default 10s, mirroring Run
 - Parent ctx canceled mid-fetch → `ExitError{Code: 4}` (transient, user aborted).
 - **Fetch timeout (`context.DeadlineExceeded` from the internal `FetchTimeout` deadline, parent ctx still alive) → `ExitError{Code: 4}`**. Treating it as transient matches the `attach` semantics where ctx cancel is exit 4 — a stuck/slow orchestrator is a "try again" signal, not a "your config is broken" signal (which would be exit 3).
 
-Project-scoped resolution (cambio 4): if `.sophia.yaml` exists and is **malformed** (YAML parse error or missing `project:` field), `status` MUST fail with exit 3 wrapping the parse error. Only fall through to global when (a) we are outside a git repo, (b) `.sophia.yaml` does not exist, or (c) `.sophia.yaml` exists, parses cleanly, but no `last_change_id` is recorded yet for the resulting fingerprint. This is stricter than M3's "any error in tryProject silently falls through" — the `changes` command keeps the lenient behavior with a stderr warning, but `status` is meant to be a precise truth signal and must not hide config errors. Distinguishing parse errors from "missing file" relies on `errors.Is(err, domain.ErrConfigMissing)` and `errors.Is(err, domain.ErrConfigInvalid)` returned by `ProjectConfigStore.Read`.
+Project-scoped resolution (cambio 4): if `.sophia.yaml` exists and is **malformed** (YAML parse error or missing `project:` field), `status` MUST fail with exit 3 wrapping the parse error. Only fall through to global when (a) we are outside a git repo, (b) `.sophia.yaml` does not exist, or (c) `.sophia.yaml` exists, parses cleanly, but no `last_change_id` is recorded yet for the resulting fingerprint. This is stricter than M3's "any error in tryProject silently falls through" — the `changes` command keeps the lenient behavior with a stderr warning, but `status` is meant to be a precise truth signal and must not hide config errors. Distinguishing parse errors from "missing file" relies on `errors.Is(err, domain.ErrConfigMissing)` and `errors.Is(err, domain.ErrInvalidYAML)` returned by `ProjectConfigStore.Read`.
 
 The new `Resolve` signature: `Resolve(ctx, ResolveInput) (StatusReport, error)`. `ResolveInput` carries the optional `ChangeID` arg; an empty value triggers the project→global fallback.
 
@@ -1363,9 +1363,9 @@ func TestStatusInvalidProjectYAMLExitCode3(t *testing.T) {
 	orch.SeedChange(&domain.Change{ID: "GLOB", Status: domain.ChangeStatusDone})
 	_ = state.SetGlobalLast(context.Background(), "GLOB")
 	git.Root = "/repo"
-	// ProjectStore.Read returns ErrConfigInvalid for /repo/.sophia.yaml.
+	// ProjectStore.Read returns ErrInvalidYAML for /repo/.sophia.yaml.
 	store.ReadErr = map[string]error{
-		"/repo/.sophia.yaml": fmt.Errorf("yaml: line 3: %w", domain.ErrConfigInvalid),
+		"/repo/.sophia.yaml": fmt.Errorf("yaml: line 3: %w", domain.ErrInvalidYAML),
 	}
 
 	_, err := r.Resolve(context.Background(), application.ResolveInput{})
@@ -1376,8 +1376,8 @@ func TestStatusInvalidProjectYAMLExitCode3(t *testing.T) {
 	if exit.Code != 3 {
 		t.Errorf("Code = %d, want 3 (invalid .sophia.yaml)", exit.Code)
 	}
-	if !errors.Is(err, domain.ErrConfigInvalid) {
-		t.Errorf("expected wrapped ErrConfigInvalid; got %v", err)
+	if !errors.Is(err, domain.ErrInvalidYAML) {
+		t.Errorf("expected wrapped ErrInvalidYAML; got %v", err)
 	}
 }
 
@@ -1409,7 +1409,7 @@ func TestStatusMissingProjectYAMLFallsThroughToGlobal(t *testing.T) {
 >
 > Update Read to honor it: `if e, ok := f.ReadErr[path]; ok { return nil, e }` before the file-store lookup.
 >
-> If `domain.ErrConfigInvalid` doesn't yet exist in the domain layer, add it next to `ErrConfigMissing` in `internal/domain/errors.go` (or wherever `ErrConfigMissing` lives — verify path before editing). It is a sentinel, not a struct: `var ErrConfigInvalid = errors.New("config invalid")`. Then the `yamlconfig` adapter wraps parse errors via `fmt.Errorf("yaml: %s: %w", line, ErrConfigInvalid)` so callers can `errors.Is` against it.
+> **Sentinel reuse:** `domain.ErrInvalidYAML` already exists in `internal/domain/errors.go` (verified pre-Task-3). The `yamlconfig` adapter (`internal/adapters/outbound/yamlconfig/project.go:67`) returns it as a bare sentinel on parse failure (no `%w` wrapping at the source). For tests we wrap it with `fmt.Errorf("yaml: line 3: %w", domain.ErrInvalidYAML)` so `errors.Is` resolves through richer messages. Do NOT introduce a separate `ErrConfigInvalid` — the existing `ErrInvalidYAML` covers parse errors and missing required fields.
 
 - [ ] **Step 2: Run test**
 
@@ -1515,7 +1515,7 @@ func (r *StatusReader) Resolve(ctx context.Context, in ResolveInput) (StatusRepo
 //
 // Project-scoped errors (cambio 4): only ErrConfigMissing or "outside git repo"
 // (ErrNotARepo / underlying exec failure) fall through to global. A malformed
-// .sophia.yaml (ErrConfigInvalid) is fatal and surfaces as ExitError{Code: 3}
+// .sophia.yaml (ErrInvalidYAML) is fatal and surfaces as ExitError{Code: 3}
 // — `status` must not hide config corruption.
 func (r *StatusReader) locate(ctx context.Context, in ResolveInput) (domain.ChangeID, StatusSource, error) {
 	if !in.ChangeID.IsZero() {
@@ -1525,7 +1525,7 @@ func (r *StatusReader) locate(ctx context.Context, in ResolveInput) (domain.Chan
 	if err == nil && !id.IsZero() {
 		return id, src, nil
 	}
-	if err != nil && errors.Is(err, domain.ErrConfigInvalid) {
+	if err != nil && errors.Is(err, domain.ErrInvalidYAML) {
 		// Malformed .sophia.yaml: status fails; do NOT fall through.
 		return "", "", &ExitError{Code: 3, Err: fmt.Errorf("project config invalid: %w", err)}
 	}
@@ -1577,7 +1577,7 @@ func (r *StatusReader) fetch(ctx context.Context, id domain.ChangeID) (*domain.C
 //     and a project-scoped last_change_id is recorded.
 //   - ("", "", ErrConfigMissing) when there's no .sophia.yaml (locate falls
 //     through to global).
-//   - ("", "", ErrConfigInvalid-wrapped error) when .sophia.yaml exists but is
+//   - ("", "", ErrInvalidYAML-wrapped error) when .sophia.yaml exists but is
 //     malformed (locate maps to ExitError{Code: 3}).
 //   - ("", "", git-repo error) when not in a git repo (locate falls through).
 //   - ("", "", state-store error) on a state lookup failure (rare; locate
@@ -1592,7 +1592,7 @@ func (r *StatusReader) tryProject(ctx context.Context) (domain.ChangeID, StatusS
 	cfg, err := r.deps.ProjectStore.Read(ctx, cfgPath)
 	if err != nil {
 		// Surface the error verbatim so locate can distinguish
-		// ErrConfigMissing (fall through) from ErrConfigInvalid (fatal).
+		// ErrConfigMissing (fall through) from ErrInvalidYAML (fatal).
 		return "", "", err
 	}
 	remote, _ := r.deps.Git.RemoteURL(ctx, root)
@@ -3576,7 +3576,7 @@ git tag
 | RM8-09 | `status`'s resolution order forgets the env var precedence | Spec §2.5 doesn't list env vars in the status resolution order — only arg → project → global → empty. The resolver's broader env-var handling (used by `run` and `changes`) does not apply to `status`. StatusReader does NOT read env vars; only `tryProject` (config-file-driven) and `GetGlobalLast` (state-file-driven). Documented by the empty `ResolveInput` containing no env field. |
 | RM8-10 | Sink double-close in attach JSONL path (Attacher's `defer sink.Close()` + cli's wrapper Close) | Mirrors the M5/M7 Runner case: only the wrapper is exposed to Attacher; the cli's `runJSONL`/`attachJSONL` helpers do NOT call `chooseJSONSink`'s return Close directly. The wrapper's Close is idempotent. |
 | RM8-11 | `Lister.List` returns `[]*domain.Change` but downstream expects sorted output | M8 does NOT sort — the orchestrator decides ordering. If the orchestrator returns unsorted results, the table output preserves that order. Spec §2.5 is silent on ordering; M9+ may add `--sort created-desc`. Documented in "what's NOT in M8". |
-| RM8-12 | StatusReader silently ignores `tryProject` errors | **Resolved by cambio 4.** M3's behavior was "any error in tryProject falls through to global". M8 splits the behavior by command: `status` is strict — `domain.ErrConfigInvalid` from a malformed `.sophia.yaml` produces `ExitError{Code: 3}` and stops the resolution chain. `changes` keeps the lenient fall-through but emits a stderr warning. Missing `.sophia.yaml` (`ErrConfigMissing`) and "outside git repo" still fall through silently in both commands — they're "no project context" signals, not config corruption. Tests `TestStatusInvalidProjectYAMLExitCode3` and `TestStatusMissingProjectYAMLFallsThroughToGlobal` lock the contract. |
+| RM8-12 | StatusReader silently ignores `tryProject` errors | **Resolved by cambio 4.** M3's behavior was "any error in tryProject falls through to global". M8 splits the behavior by command: `status` is strict — `domain.ErrInvalidYAML` from a malformed `.sophia.yaml` produces `ExitError{Code: 3}` and stops the resolution chain. `changes` keeps the lenient fall-through but emits a stderr warning. Missing `.sophia.yaml` (`ErrConfigMissing`) and "outside git repo" still fall through silently in both commands — they're "no project context" signals, not config corruption. Tests `TestStatusInvalidProjectYAMLExitCode3` and `TestStatusMissingProjectYAMLFallsThroughToGlobal` lock the contract. |
 
 ---
 
@@ -3636,7 +3636,7 @@ User audit caught five issues in the as-written plan and the M5/M7 code already 
 
 3. **Cambio 3 — `approvalTimeoutSink.startTimer` is no-reset while armed.** The M7 implementation in `internal/adapters/inbound/cli/timeout_sink.go` (committed in `c45e25e` as part of the M7 milestone tag) stops and restarts the timer on every `OnApprovalGate` call, which would defeat D-M8-13's eager-arm guarantee — a fresh `approval.required` arriving via SSE would reset the t=0 anchor. Fix: when `s.timer != nil && !s.fired`, refresh `s.gate` but skip the `time.AfterFunc` reset. The existing `stopTimer` clears both `s.timer` and `s.gate` on `approval.resolved` / `OnComplete` / `Close`, so a SUBSEQUENT `approval.required` after a resolved correctly starts a fresh timer. New tests in `timeout_sink_test.go`: `TestApprovalTimeoutSinkDoesNotResetOnReGate`, `TestApprovalTimeoutSinkResolvedThenNewGateStartsFresh`, `TestApprovalTimeoutSinkSecondGatePreservesArmTime`. Lands as Sub-task 6.A with its own commit (`fix(cli): approvalTimeoutSink no longer resets on re-emit`).
 
-4. **Cambio 4 — `StatusReader` distinguishes invalid vs missing `.sophia.yaml`.** RM8-12 originally said "M8 keeps M3's silent fall-through" for any tryProject error. That hides config corruption. Fix: `domain.ErrConfigInvalid` is a new sentinel; `tryProject` surfaces it verbatim; `StatusReader.locate` maps it to `ExitError{Code: 3}`. Missing config (`ErrConfigMissing`) and "outside repo" still fall through to global. The `changes` command keeps its lenient warn-and-fall-through behavior. New tests: `TestStatusInvalidProjectYAMLExitCode3`, `TestStatusMissingProjectYAMLFallsThroughToGlobal`. Requires adding `domain.ErrConfigInvalid` next to `ErrConfigMissing` in the domain layer; the YAML adapter must wrap parse errors with `%w` against this sentinel.
+4. **Cambio 4 — `StatusReader` distinguishes invalid vs missing `.sophia.yaml`.** RM8-12 originally said "M8 keeps M3's silent fall-through" for any tryProject error. That hides config corruption. Fix: reuse the **already-existing** `domain.ErrInvalidYAML` sentinel (defined in `internal/domain/errors.go` since M3 / yamlconfig adapter); `tryProject` surfaces it verbatim; `StatusReader.locate` maps it to `ExitError{Code: 3}`. Missing config (`ErrConfigMissing`) and "outside repo" still fall through to global. The `changes` command keeps its lenient warn-and-fall-through behavior. New tests: `TestStatusInvalidProjectYAMLExitCode3`, `TestStatusMissingProjectYAMLFallsThroughToGlobal`. **No new sentinel needed** — verified `ErrInvalidYAML` already covers parse failures and missing required fields. The yamlconfig adapter currently returns it bare; consumers either compare equality (M3 tests) or `errors.Is` (M8 tests) — both work.
 
 5. **Cambio 5 — fetch timeout is exit 4, not exit 3.** The original Task 4 mapping was "ctx cancel → 4; everything else → 3". That conflated a slow/stuck orchestrator (transient — try again) with a config-stale cache (fatal — clear it). Fix: `StatusReader.fetch` now maps both parent ctx cancel and the internal `FetchTimeout` `context.DeadlineExceeded` to exit 4, while 404 / 5xx / `ErrUnreachable` stay at exit 3. Detection uses both `errors.Is(err, context.DeadlineExceeded)` and `errors.Is(fctx.Err(), context.DeadlineExceeded)` to defend against HTTP clients that wrap the inner ctx error. New test: `TestStatusInternalFetchTimeoutExitCode4`.
 

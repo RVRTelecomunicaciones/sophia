@@ -1,6 +1,7 @@
 package orchestratorhttp_test
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -8,6 +9,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"strings"
 	"testing"
 
 	"github.com/RVRTelecomunicaciones/sophia-cli/internal/adapters/outbound/orchestratorhttp"
@@ -153,5 +155,29 @@ func TestListChangesNoFiltersOmitsEmptyParams(t *testing.T) {
 	c := orchestratorhttp.New(orchestratorhttp.Config{BaseURL: srv.URL})
 	if _, err := c.ListChanges(context.Background(), outbound.ListChangesFilter{}); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestDoJSONRejectsOversizedBody(t *testing.T) {
+	// Server sends body larger than the 1 MiB cap.
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		// Write 1 MiB + 1 byte of valid-looking JSON wrapper. The shape doesn't
+		// matter — we expect to fail before decode.
+		w.WriteHeader(http.StatusOK)
+		// Pad inside a JSON string so it stays valid-ish if it WERE truncated cleanly.
+		_, _ = io.WriteString(w, `{"change_id":"x","name":"`)
+		_, _ = w.Write(bytes.Repeat([]byte("a"), 1<<20))
+		_, _ = io.WriteString(w, `"}`)
+	}))
+	defer srv.Close()
+
+	c := orchestratorhttp.New(orchestratorhttp.Config{BaseURL: srv.URL})
+	_, err := c.GetChange(context.Background(), domain.ChangeID("x"))
+	if err == nil {
+		t.Fatal("expected error on oversized body")
+	}
+	if !strings.Contains(err.Error(), "exceeds") {
+		t.Errorf("expected 'exceeds' in error, got: %v", err)
 	}
 }

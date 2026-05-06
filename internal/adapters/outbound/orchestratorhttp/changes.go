@@ -14,8 +14,8 @@ import (
 	"github.com/RVRTelecomunicaciones/sophia-cli/internal/ports/outbound"
 )
 
-// MaxBodySize caps response body reads to 1 MiB to bound memory.
-const MaxBodySize = 1 << 20
+// maxBodySize caps response body reads to 1 MiB to bound memory.
+const maxBodySize = 1 << 20
 
 // CreateChange POSTs /api/v1/changes.
 func (c *Client) CreateChange(ctx context.Context, in outbound.CreateChangeInput) (*domain.Change, error) {
@@ -92,13 +92,12 @@ func (c *Client) ListChanges(ctx context.Context, f outbound.ListChangesFilter) 
 	}
 	out := make([]*domain.Change, len(resp.Items))
 	for i, item := range resp.Items {
-		dto := item
-		out[i] = dto.ToDomain()
+		out[i] = item.ToDomain()
 	}
 	return out, nil
 }
 
-// doJSON executes req, reads up to MaxBodySize bytes, returns a *StatusError
+// doJSON executes req, reads up to maxBodySize bytes, returns a *StatusError
 // on non-2xx, or json-decodes a 2xx body into out.
 func (c *Client) doJSON(req *http.Request, out any) error {
 	resp, err := c.http.Do(req)
@@ -106,9 +105,12 @@ func (c *Client) doJSON(req *http.Request, out any) error {
 		return fmt.Errorf("request: %w", err)
 	}
 	defer resp.Body.Close()
-	body, err := io.ReadAll(io.LimitReader(resp.Body, MaxBodySize))
+	body, err := io.ReadAll(io.LimitReader(resp.Body, maxBodySize+1))
 	if err != nil {
 		return fmt.Errorf("read body: %w", err)
+	}
+	if int64(len(body)) > maxBodySize {
+		return fmt.Errorf("response body exceeds %d bytes", maxBodySize)
 	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return NewStatusError(resp.StatusCode, body)

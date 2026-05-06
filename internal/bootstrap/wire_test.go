@@ -47,3 +47,17 @@ func TestNewWiresM3Commands(t *testing.T) {
 		}
 	}
 }
+
+func TestNewWiresM4Run(t *testing.T) {
+	root, err := bootstrap.New(bootstrap.Config{LogWriter: nil})
+	if err != nil {
+		t.Fatal(err)
+	}
+	c, _, err := root.Find([]string{"run"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c == nil {
+		t.Fatal("run cmd is nil")
+	}
+}

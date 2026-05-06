@@ -4,10 +4,12 @@ import (
 	"io"
 	"log/slog"
 	"os"
+	"path/filepath"
 
 	"github.com/spf13/cobra"
 
 	"github.com/RVRTelecomunicaciones/sophia-cli/internal/adapters/inbound/cli"
+	"github.com/RVRTelecomunicaciones/sophia-cli/internal/adapters/inbound/jsonsink"
 	"github.com/RVRTelecomunicaciones/sophia-cli/internal/adapters/outbound/composeexec"
 	"github.com/RVRTelecomunicaciones/sophia-cli/internal/adapters/outbound/filestate"
 	"github.com/RVRTelecomunicaciones/sophia-cli/internal/adapters/outbound/gitcli"
@@ -78,15 +80,36 @@ func New(cfg Config) (*cobra.Command, error) {
 		ProjectStore: projectStore,
 	})
 
+	resolver := application.NewConfigResolver(application.ConfigResolverDeps{
+		ProjectStore: projectStore,
+		UserStore:    yamlconfig.NewUserStore(yamlconfig.UserConfig{}),
+		Git:          git,
+	})
+
+	// JSON sink writes to stdout. The runner is constructed with this sink
+	// for V1; M6 will swap to a TUI sink based on flags.
+	sink := jsonsink.New(jsonsink.Config{Writer: os.Stdout})
+	runner := application.NewRunner(application.RunnerDeps{
+		Orch:  orch,
+		State: state,
+		Git:   git,
+		Sink:  sink,
+	}, application.RunnerOptions{})
+
+	userConfigPath := filepath.Join(xdg.ConfigRoot, "config.yaml")
+
 	info := NewVersionInfo()
 	deps := cli.Deps{
-		Doctor:       doctor,
-		Provisioner:  provisioner,
-		Initializer:  initializer,
-		StatusReader: statusReader,
-		Version:      info.Version,
-		Commit:       info.Commit,
-		BuildDate:    info.BuildDate,
+		Doctor:         doctor,
+		Provisioner:    provisioner,
+		Initializer:    initializer,
+		StatusReader:   statusReader,
+		Runner:         runner,
+		Resolver:       resolver,
+		UserConfigPath: userConfigPath,
+		Version:        info.Version,
+		Commit:         info.Commit,
+		BuildDate:      info.BuildDate,
 	}
 	return cli.NewRoot(deps), nil
 }

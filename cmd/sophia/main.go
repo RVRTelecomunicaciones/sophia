@@ -2,11 +2,13 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"os/signal"
 	"syscall"
 
+	"github.com/RVRTelecomunicaciones/sophia-cli/internal/application"
 	"github.com/RVRTelecomunicaciones/sophia-cli/internal/bootstrap"
 )
 
@@ -20,6 +22,11 @@ func main() {
 		os.Exit(4)
 	}
 	if err := root.ExecuteContext(ctx); err != nil {
+		var exit *application.ExitError
+		if errors.As(err, &exit) {
+			fmt.Fprintln(os.Stderr, "error:", err)
+			os.Exit(exit.Code)
+		}
 		fmt.Fprintln(os.Stderr, "error:", err)
 		os.Exit(3)
 	}

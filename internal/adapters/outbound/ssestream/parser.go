@@ -21,9 +21,23 @@ type RawSSE struct {
 	Data string // "data:" field — JSON envelope per spec §5.3
 }
 
+// flexTime tolerates empty-string and null JSON timestamps, both of which
+// represent "missing" per spec §5.4. Real RFC3339 strings parse normally
+// via the embedded time.Time.
+type flexTime struct{ time.Time }
+
+func (f *flexTime) UnmarshalJSON(b []byte) error {
+	s := string(b)
+	if s == `""` || s == "null" {
+		f.Time = time.Time{}
+		return nil
+	}
+	return f.Time.UnmarshalJSON(b)
+}
+
 // envelope is the JSON shape of the SSE "data:" line per spec §5.3.
 type envelope struct {
-	Timestamp time.Time      `json:"timestamp"`
+	Timestamp flexTime       `json:"timestamp"`
 	Payload   map[string]any `json:"payload"`
 	TraceID   string         `json:"trace_id"`
 }
@@ -35,8 +49,13 @@ type envelope struct {
 //
 //   - Empty Type → skip.
 //   - Invalid JSON in Data → skip.
-//   - Missing fields in the envelope → default to zero values.
-//   - Unknown Type → emitted unchanged (forward-compatible).
+//   - Missing or empty-string Timestamp → zero time.Time (per §5.4
+//     "missing fields default to empty"; we treat "" and null the same).
+//   - Missing Payload → nil map (preserved by the redactor's nil-guard).
+//   - Unknown Type → emitted unchanged (forward-compatible). Per §5.4
+//     tolerance policy; §5.3 rule 4's "skip unknown" is intentionally
+//     superseded so the TUI can render future orchestrator event types
+//     without a CLI update.
 //   - Payload strings are redacted before the Event leaves the parser.
 func ParseEvent(raw RawSSE) (domain.Event, bool) {
 	if raw.Type == "" {
@@ -54,7 +73,7 @@ func ParseEvent(raw RawSSE) (domain.Event, bool) {
 	}
 	return domain.Event{
 		Type:      raw.Type,
-		Timestamp: env.Timestamp,
+		Timestamp: env.Timestamp.Time,
 		Payload:   payload,
 		TraceID:   env.TraceID,
 		EventID:   raw.ID,

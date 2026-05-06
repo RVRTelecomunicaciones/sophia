@@ -133,3 +133,56 @@ func TestIsHeartbeatRecognizesHeartbeatType(t *testing.T) {
 		t.Error("expected false for phase.started")
 	}
 }
+
+// Regression: empty-string timestamp must not cause the event to be dropped.
+// Spec §5.4 treats missing fields as "" — and "" must be tolerated as zero time.
+func TestParseEventTimestampEmptyStringYieldsZeroTime(t *testing.T) {
+	raw := ssestream.RawSSE{
+		Type: "phase.started",
+		Data: `{"timestamp":"","payload":{"phase_id":"p"}}`,
+	}
+	ev, ok := ssestream.ParseEvent(raw)
+	if !ok {
+		t.Fatal("expected ok=true for empty-string timestamp")
+	}
+	if !ev.Timestamp.IsZero() {
+		t.Errorf("expected zero Timestamp, got %v", ev.Timestamp)
+	}
+	if ev.Payload["phase_id"] != "p" {
+		t.Errorf("payload not preserved: %v", ev.Payload)
+	}
+}
+
+// Regression: explicit JSON null for timestamp also yields zero time.
+func TestParseEventTimestampNullYieldsZeroTime(t *testing.T) {
+	raw := ssestream.RawSSE{
+		Type: "phase.completed",
+		Data: `{"timestamp":null,"payload":{}}`,
+	}
+	ev, ok := ssestream.ParseEvent(raw)
+	if !ok {
+		t.Fatal("expected ok=true for null timestamp")
+	}
+	if !ev.Timestamp.IsZero() {
+		t.Errorf("expected zero Timestamp, got %v", ev.Timestamp)
+	}
+}
+
+// Coverage: empty Data field (heartbeat with no envelope) returns ok=true
+// with a typed Event and nil Payload.
+func TestParseEventToleratesEmptyData(t *testing.T) {
+	raw := ssestream.RawSSE{Type: "heartbeat", Data: ""}
+	ev, ok := ssestream.ParseEvent(raw)
+	if !ok {
+		t.Fatal("expected ok=true for empty data")
+	}
+	if ev.Type != "heartbeat" {
+		t.Errorf("Type = %q", ev.Type)
+	}
+	if ev.Payload != nil {
+		t.Errorf("expected nil Payload, got %v", ev.Payload)
+	}
+	if !ev.Timestamp.IsZero() {
+		t.Errorf("expected zero Timestamp")
+	}
+}

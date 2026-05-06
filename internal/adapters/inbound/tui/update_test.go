@@ -2,6 +2,7 @@ package tui_test
 
 import (
 	"errors"
+	"strings"
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
@@ -172,4 +173,91 @@ func keyPress(name string) tea.KeyPressMsg {
 		r := rune(name[0])
 		return tea.KeyPressMsg{Code: r, Text: name}
 	}
+}
+
+func TestUpdateTabTogglesView(t *testing.T) {
+	m := tui.NewModel(tui.ModelConfig{ChangeID: domain.ChangeID("01HX")})
+	m2, cmd := tui.Update(m, keyPressTab())
+	if m2.CurrentView() != tui.ViewApplyBoard {
+		t.Errorf("after Tab from Timeline, view = %v", m2.CurrentView())
+	}
+	if cmd != nil {
+		t.Errorf("Tab should not produce a Cmd")
+	}
+	m3, _ := tui.Update(m2, keyPressTab())
+	if m3.CurrentView() != tui.ViewTimeline {
+		t.Errorf("after second Tab, view = %v", m3.CurrentView())
+	}
+}
+
+func TestUpdateTabInConfirmModeCancelsAndToggles(t *testing.T) {
+	m := tui.NewModel(tui.ModelConfig{ChangeID: domain.ChangeID("01HX")}).WithConfirmingDetach(true)
+	m2, _ := tui.Update(m, keyPressTab())
+	if m2.ConfirmingDetach() {
+		t.Error("Tab should cancel confirm mode (D-M7-02)")
+	}
+	if m2.CurrentView() != tui.ViewApplyBoard {
+		t.Error("Tab should also toggle view after canceling confirm (D-M7-02)")
+	}
+}
+
+func TestUpdateOKeyWithBannerEmitsOpenBrowserMsg(t *testing.T) {
+	m := tui.NewModel(tui.ModelConfig{ChangeID: domain.ChangeID("01HX")}).
+		WithBannerGate(&domain.ApprovalGate{URL: "https://gov.local/x"})
+	m2, cmd := tui.Update(m, keyPress("o"))
+	if cmd == nil {
+		t.Fatal("[O] with banner visible should produce a Cmd that emits OpenBrowserMsg")
+	}
+	got := cmd()
+	openMsg, ok := got.(tui.OpenBrowserMsg)
+	if !ok {
+		t.Fatalf("Cmd return = %T, want OpenBrowserMsg", got)
+	}
+	if openMsg.URL != "https://gov.local/x" {
+		t.Errorf("OpenBrowserMsg.URL = %q", openMsg.URL)
+	}
+	// Model unchanged.
+	if m2.BannerGate() == nil {
+		t.Error("[O] should not clear banner on its own")
+	}
+}
+
+func TestUpdateOKeyWithoutBannerIsNoOp(t *testing.T) {
+	m := tui.NewModel(tui.ModelConfig{ChangeID: domain.ChangeID("01HX")})
+	m2, cmd := tui.Update(m, keyPress("o"))
+	if cmd != nil {
+		t.Errorf("[O] without banner should be a no-op (D-M7-03)")
+	}
+	_ = m2
+}
+
+func TestUpdateBrowserOpenedMsgWithErrorAddsErrorLine(t *testing.T) {
+	m := tui.NewModel(tui.ModelConfig{ChangeID: domain.ChangeID("01HX")})
+	m2, cmd := tui.Update(m, tui.BrowserOpenedMsg{Err: errors.New("boom")})
+	if cmd != nil {
+		t.Errorf("BrowserOpenedMsg should not produce a Cmd")
+	}
+	errs := m2.Errors()
+	found := false
+	for _, e := range errs {
+		if strings.Contains(e, "browser") {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("expected an error line mentioning 'browser'; got %v", errs)
+	}
+}
+
+func TestUpdateBrowserOpenedMsgWithNilIsNoOp(t *testing.T) {
+	m := tui.NewModel(tui.ModelConfig{ChangeID: domain.ChangeID("01HX")})
+	m2, _ := tui.Update(m, tui.BrowserOpenedMsg{Err: nil})
+	if len(m2.Errors()) != 0 {
+		t.Errorf("BrowserOpenedMsg{nil} should not append errors; got %v", m2.Errors())
+	}
+}
+
+// keyPressTab constructs a Tab keystroke per Bubble Tea v2 API.
+func keyPressTab() tea.KeyPressMsg {
+	return tea.KeyPressMsg{Code: tea.KeyTab}
 }

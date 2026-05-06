@@ -15,6 +15,8 @@ const (
 	ActionConfirmDetach
 	ActionConfirmYes
 	ActionConfirmNo
+	ActionToggleView // M7: Tab toggles Timeline ↔ ApplyBoard
+	ActionOpenBanner // M7: [O] opens the approval gate URL in a browser
 )
 
 // classifyKey reads a tea.KeyPressMsg and returns the Action it triggers.
@@ -38,6 +40,15 @@ func classifyKey(msg tea.KeyPressMsg, confirming bool) Action {
 			return ActionConfirmNo
 		}
 		return ActionNone
+	case "tab":
+		// D-M7-02: Tab in confirm mode cancels confirm AND toggles view.
+		// Update reads this Action and clears confirmingDetach before
+		// flipping currentView.
+		return ActionToggleView
+	case "o":
+		// [O] only does something useful when the banner is visible.
+		// Update gates on m.BannerGate() != nil.
+		return ActionOpenBanner
 	}
 	if confirming {
 		return ActionConfirmNo

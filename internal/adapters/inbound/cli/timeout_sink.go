@@ -98,10 +98,16 @@ func (s *approvalTimeoutSink) Wait() error {
 func (s *approvalTimeoutSink) startTimer(g domain.ApprovalGate) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if s.timer != nil {
-		s.timer.Stop()
-	}
 	cp := g
+	// If a timer is already armed (and hasn't fired), this is a re-emit of
+	// the same logical gate (or a fresh approval.required arriving after our
+	// eager-arm in attachJSONL). Refresh s.gate so observe keeps the latest
+	// phase metadata, but DO NOT restart the timer — the eager-arm timestamp
+	// must be preserved (D-M8-13 / cambio 3).
+	if s.timer != nil && !s.fired {
+		s.gate = &cp
+		return
+	}
 	s.gate = &cp
 	if s.timeout <= 0 {
 		return

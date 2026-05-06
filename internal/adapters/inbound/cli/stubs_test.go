@@ -1,28 +1,10 @@
 package cli_test
 
-import (
-	"bytes"
-	"strings"
-	"testing"
+import "testing"
 
-	"github.com/RVRTelecomunicaciones/sophia-cli/internal/adapters/inbound/cli"
-)
-
+// TestStubsAnnounceMilestone is intentionally a Skip after M8 — every M1-M8
+// command is now real. Kept as a placeholder so future stubs (post-v1) have
+// a known location to plug into.
 func TestStubsAnnounceMilestone(t *testing.T) {
-	cases := map[string]string{
-		"attach": "M8",
-	}
-	for sub, milestone := range cases {
-		c := cli.NewRoot(cli.Deps{})
-		var out bytes.Buffer
-		c.SetOut(&out)
-		c.SetArgs([]string{sub})
-		if err := c.Execute(); err != nil {
-			t.Fatalf("%s err: %v", sub, err)
-		}
-		got := out.String()
-		if !strings.Contains(got, "not implemented yet") || !strings.Contains(got, milestone) {
-			t.Errorf("%s output = %q (want milestone %s)", sub, got, milestone)
-		}
-	}
+	t.Skip("no stubs left after M8 — every v1 command is now real")
 }

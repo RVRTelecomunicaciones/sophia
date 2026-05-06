@@ -13,6 +13,9 @@ import (
 // RunnerFactory builds a *application.Runner with the caller-provided sink.
 type RunnerFactory func(sink inbound.EventSink) *application.Runner
 
+// AttacherFactory builds a *application.Attacher with the caller-provided sink.
+type AttacherFactory func(sink inbound.EventSink) *application.Attacher
+
 type Deps struct {
 	Doctor       *application.DoctorService
 	Provisioner  *application.Provisioner
@@ -28,6 +31,10 @@ type Deps struct {
 	// RunnerFactory is the M6 way of constructing a Runner — sink-injected
 	// at command time. Mandatory for `sophia run`.
 	RunnerFactory RunnerFactory
+
+	// AttacherFactory is the M8 way of constructing an Attacher — sink-injected
+	// at command time. Mandatory for `sophia attach`.
+	AttacherFactory AttacherFactory
 
 	// JSONSinkOverride lets tests inject a recording sink instead of
 	// jsonsink.New(os.Stdout). Production leaves this nil.
@@ -67,7 +74,7 @@ state.`,
 	root.AddCommand(newStartCmd(d))
 	root.AddCommand(newStopCmd(d))
 	root.AddCommand(newRunCmd(d))
-	root.AddCommand(newStubCmd("attach", "Attach to an existing Change", "M8"))
+	root.AddCommand(newAttachCmd(d))
 	root.AddCommand(newStatusCmd(d))
 	root.AddCommand(newChangesCmd(d))
 

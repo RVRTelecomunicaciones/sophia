@@ -18,7 +18,12 @@ type Deps struct {
 	Provisioner  *application.Provisioner
 	Initializer  *application.Initializer
 	StatusReader *application.StatusReader
+	Lister       *application.Lister
 	Resolver     *application.ConfigResolver
+
+	// Orch is the raw OrchestratorClient. Required by Task 6's
+	// `attachJSONL` eager-arm (declared here so Task 6 wiring is trivial).
+	Orch outbound.OrchestratorClient
 
 	// RunnerFactory is the M6 way of constructing a Runner — sink-injected
 	// at command time. Mandatory for `sophia run`.
@@ -64,7 +69,7 @@ state.`,
 	root.AddCommand(newRunCmd(d))
 	root.AddCommand(newStubCmd("attach", "Attach to an existing Change", "M8"))
 	root.AddCommand(newStatusCmd(d))
-	root.AddCommand(newStubCmd("changes", "List recent Changes", "M8"))
+	root.AddCommand(newChangesCmd(d))
 
 	return root
 }

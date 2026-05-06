@@ -277,7 +277,7 @@ type sentinelError string
 
 func (s sentinelError) Error() string { return string(s) }
 
-func waitMessages(t *testing.T, s *fakeSender, n int, timeout time.Duration) []any {
+func waitMessages(t *testing.T, s *fakeSender, n int, timeout time.Duration) []any { //nolint:unparam // n is a general-purpose threshold; callers may pass values other than 1
 	t.Helper()
 	deadline := time.Now().Add(timeout)
 	for time.Now().Before(deadline) {

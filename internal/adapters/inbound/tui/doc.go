@@ -3,8 +3,8 @@
 // is split into:
 //
 //   - bridge.go:       cap-256 buffered EventSink that calls program.Send,
-//                      with a drop policy that protects phase.* / approval.*
-//                      events while shedding heartbeats first under pressure.
+//     with a drop policy that protects phase.* / approval.*
+//     events while shedding heartbeats first under pressure.
 //   - model.go:        pure Model state — no I/O, no tickers.
 //   - update.go:       pure Update function for tea.Msg dispatch.
 //   - keybindings.go:  key → action map (Q, Ctrl+C, etc.).

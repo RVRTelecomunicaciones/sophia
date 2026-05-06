@@ -142,6 +142,6 @@ func (m wrappedModel) View() tea.View {
 	return tea.NewView(tui.View(m.state))
 }
 
-func newRoot(id domain.ChangeID) tea.Model {
+func newRoot(id domain.ChangeID) tea.Model { //nolint:unparam // id is a general helper; future tests may pass different ChangeIDs
 	return wrappedModel{state: tui.NewModel(tui.ModelConfig{ChangeID: id})}
 }

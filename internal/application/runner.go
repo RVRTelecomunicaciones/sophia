@@ -128,7 +128,7 @@ func (r *Runner) Run(ctx context.Context, in RunInput) (RunResult, error) {
 			return res, &ExitError{Code: 4, Err: err}
 		}
 		_ = r.deps.Sink.OnError(ctx, err)
-		return res, &ExitError{Code: 4, Err: err}
+		return res, &ExitError{Code: 3, Err: err}
 	}
 	return r.finish(ctx, res, final)
 }

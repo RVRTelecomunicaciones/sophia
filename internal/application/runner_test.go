@@ -8,6 +8,7 @@ import (
 
 	"github.com/RVRTelecomunicaciones/sophia-cli/internal/application"
 	"github.com/RVRTelecomunicaciones/sophia-cli/internal/domain"
+	"github.com/RVRTelecomunicaciones/sophia-cli/internal/ports/outbound"
 	"github.com/RVRTelecomunicaciones/sophia-cli/test/fakes"
 )
 
@@ -165,12 +166,73 @@ func TestRunnerInputRequiresProjectAndMessage(t *testing.T) {
 	sink := &recordingSink{}
 	r, _ := newRunner(orch, sink)
 
-	_, err := r.Run(context.Background(), application.RunInput{Message: ""})
-	if err == nil {
-		t.Error("expected error on empty message")
+	cases := []struct {
+		name string
+		in   application.RunInput
+	}{
+		{"empty message", application.RunInput{Project: "p", Message: ""}},
+		{"empty project", application.RunInput{Project: "", Message: "m"}},
 	}
-	_, err = r.Run(context.Background(), application.RunInput{Message: "m"})
-	if err == nil {
-		t.Error("expected error on empty project")
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			_, err := r.Run(context.Background(), tc.in)
+			if err == nil {
+				t.Fatalf("expected error for %s", tc.name)
+			}
+			var exit *application.ExitError
+			if !errors.As(err, &exit) {
+				t.Fatalf("expected ExitError, got %T: %v", err, err)
+			}
+			if exit.Code != 3 {
+				t.Errorf("Code = %d, want 3", exit.Code)
+			}
+		})
 	}
+}
+
+// poll-time non-ctx error should map to Code 3 (per spec §2.3), not Code 4.
+func TestRunnerExitCode3OnPollFailure(t *testing.T) {
+	sink := &recordingSink{}
+	stub := &alwaysFailGet{
+		createFn: func(_ outbound.CreateChangeInput) *domain.Change {
+			return &domain.Change{ID: "x", Status: domain.ChangeStatusPending}
+		},
+		getErr: domain.ErrChangeNotFound,
+	}
+	state := fakes.NewFakeStateStore()
+	runner := application.NewRunner(application.RunnerDeps{
+		Orch:  stub,
+		State: state,
+		Git:   fakes.NewFakeGitInspector(),
+		Sink:  sink,
+	}, application.RunnerOptions{PollMin: time.Millisecond, PollMax: 5 * time.Millisecond})
+
+	_, err := runner.Run(context.Background(), application.RunInput{
+		Project: "p", Message: "msg", BaseRef: "main", ArtifactStore: domain.ArtifactStoreEngram,
+	})
+	var exit *application.ExitError
+	if !errors.As(err, &exit) {
+		t.Fatalf("expected ExitError, got %T: %v", err, err)
+	}
+	if exit.Code != 3 {
+		t.Errorf("Code = %d, want 3 for ErrChangeNotFound mid-poll", exit.Code)
+	}
+}
+
+// alwaysFailGet is a minimal OrchestratorClient: CreateChange succeeds with
+// a fixed change, GetChange always returns getErr.
+type alwaysFailGet struct {
+	createFn func(outbound.CreateChangeInput) *domain.Change
+	getErr   error
+}
+
+func (a *alwaysFailGet) Healthz(_ context.Context) error { return nil }
+func (a *alwaysFailGet) CreateChange(_ context.Context, in outbound.CreateChangeInput) (*domain.Change, error) {
+	return a.createFn(in), nil
+}
+func (a *alwaysFailGet) GetChange(_ context.Context, _ domain.ChangeID) (*domain.Change, error) {
+	return nil, a.getErr
+}
+func (a *alwaysFailGet) ListChanges(_ context.Context, _ outbound.ListChangesFilter) ([]*domain.Change, error) {
+	return nil, nil
 }

@@ -65,6 +65,10 @@ func (f *FakeOrchestrator) GetChange(ctx context.Context, id domain.ChangeID) (*
 		return nil, domain.ErrChangeNotFound
 	}
 	if f.TickHook != nil {
+		// TickHook fires inside the mutex by design: tests use it to mutate the
+		// stored change so the next call observes the new state. Hooks must not
+		// call back into the orchestrator (would deadlock) or block on shared
+		// state — keep them pure and fast.
 		f.TickHook(c)
 	}
 	out := *c

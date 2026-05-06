@@ -13,8 +13,10 @@ type FakeOrchestrator struct {
 	mu                  sync.Mutex
 	HealthzErr          error
 	CreateErr           error
+	ListErr             error
 	GetBlockUntilCancel bool
 	TickHook            func(*domain.Change)
+	OnListChanges       func(outbound.ListChangesFilter)
 	changes             map[domain.ChangeID]*domain.Change
 	nextID              int
 }
@@ -90,6 +92,12 @@ func (f *FakeOrchestrator) SetTerminal(id domain.ChangeID, st domain.ChangeStatu
 }
 
 func (f *FakeOrchestrator) ListChanges(_ context.Context, filter outbound.ListChangesFilter) ([]*domain.Change, error) {
+	if f.OnListChanges != nil {
+		f.OnListChanges(filter)
+	}
+	if f.ListErr != nil {
+		return nil, f.ListErr
+	}
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	out := make([]*domain.Change, 0, len(f.changes))

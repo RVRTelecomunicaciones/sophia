@@ -64,16 +64,19 @@ func TestViewMarksApprovalRequiredPhase(t *testing.T) {
 		})
 	out := tui.View(m)
 
+	// M7: approval.required also sets a banner, so the first line containing
+	// "apply" may be the banner's "Phase: apply" row. Search all lines for the
+	// timeline phase row (recognised by containing both "apply" and "!").
 	lines := strings.Split(out, "\n")
 	applyLine := ""
 	for _, line := range lines {
-		if strings.Contains(line, "apply") {
+		if strings.Contains(line, "apply") && strings.Contains(line, "!") {
 			applyLine = line
 			break
 		}
 	}
 	if applyLine == "" {
-		t.Fatal("apply phase line not found")
+		t.Fatal("apply phase line with approval marker not found")
 	}
 	if !strings.Contains(applyLine, "!") {
 		t.Errorf("approval marker (!) missing in apply line: %q", applyLine)

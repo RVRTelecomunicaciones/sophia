@@ -9,11 +9,29 @@ import (
 
 var pkgStyles = newStyles()
 
-// View is the pure rendering function. Spec §6.3 inv 7: every untrusted
-// string flows through pkgStyles.<Style>.Render to ensure ANSI escapes are
-// emitted through the styled wrapper (not passed raw as leading output).
-// View is pure: same Model → same output every time (no time.Now calls).
+// View dispatches on Model.CurrentView() and overlays the approval banner
+// at the top of the chosen view (M7). Spec §6.3 inv 7: every untrusted
+// string flows through pkgStyles.<Style>.Render; banner and view bodies
+// honor that invariant individually.
 func View(m Model) string {
+	body := ""
+	switch m.CurrentView() {
+	case ViewApplyBoard:
+		body = viewApplyBoard(m)
+	default:
+		body = viewTimeline(m)
+	}
+	if m.BannerGate() != nil {
+		return renderApprovalBanner(m, *m.BannerGate()) + "\n" + body
+	}
+	return body
+}
+
+// viewTimeline is the pure rendering function for the Timeline view.
+// Spec §6.3 inv 7: every untrusted string flows through pkgStyles.<Style>.Render
+// to ensure ANSI escapes are emitted through the styled wrapper (not passed
+// raw as leading output). viewTimeline is pure: same Model → same output.
+func viewTimeline(m Model) string {
 	var b strings.Builder
 
 	header := fmt.Sprintf("Sophia · Change %s · %s", m.ChangeID(), m.ChangeStatus())

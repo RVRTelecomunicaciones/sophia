@@ -13,26 +13,16 @@ type ListerDeps struct {
 	Orch outbound.OrchestratorClient
 }
 
-// ListInput controls List.
-//
-// Project resolution rules:
-//
-//   - Project != ""                              → forward as filter.
-//   - Project == "" AND !IgnoreProjectDefault    → forward "" (caller didn't
-//     pass a project; orchestrator decides — typically returns all).
-//   - Project == "" AND IgnoreProjectDefault     → forward "" explicitly,
-//     same wire shape but documents that the CLI layer DELIBERATELY chose
-//     "all projects" (e.g. user typed --project="").
-//
-// The two empty-string cases produce identical wire calls; IgnoreProjectDefault
-// is a narrative aid for the CLI's flag semantics, NOT a behavior switch in
-// the Lister.
+// ListInput controls List. All four fields are forwarded verbatim to
+// OrchestratorClient.ListChanges. Lister does NOT resolve project defaults,
+// does NOT impose limits, does NOT translate empty strings into wildcards.
+// The CLI layer (cli/changes.go) is responsible for any project-default
+// resolution from .sophia.yaml before invoking List.
 type ListInput struct {
-	Project              string
-	IgnoreProjectDefault bool
-	Status               string
-	Limit                int
-	Offset               int
+	Project string
+	Status  string
+	Limit   int
+	Offset  int
 }
 
 // Lister implements `sophia changes`.

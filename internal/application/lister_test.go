@@ -44,9 +44,11 @@ func TestListerEmptyProjectMeansNoFilter(t *testing.T) {
 	orch.SeedChange(&domain.Change{ID: "01H2", Project: "p2", Status: domain.ChangeStatusRunning})
 
 	l := newLister(orch)
+	// Project="" → no project filter is forwarded. Lister never invents a
+	// default; the CLI is responsible for resolving project defaults before
+	// calling List.
 	got, err := l.List(context.Background(), application.ListInput{
-		Project:              "",
-		IgnoreProjectDefault: true,
+		Project: "",
 	})
 	if err != nil {
 		t.Fatal(err)

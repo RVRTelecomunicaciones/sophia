@@ -143,3 +143,16 @@ func TestSinkIsConcurrencySafe(t *testing.T) {
 		t.Errorf("line count = %d, want 200", got)
 	}
 }
+
+// failingWriter always errors on Write — used to verify OnError suppresses
+// write failures.
+type failingWriter struct{}
+
+func (failingWriter) Write([]byte) (int, error) { return 0, errors.New("disk full") }
+
+func TestOnErrorSuppressesWriteFailure(t *testing.T) {
+	s := jsonsink.New(jsonsink.Config{Writer: failingWriter{}})
+	if err := s.OnError(context.Background(), errors.New("boom")); err != nil {
+		t.Errorf("OnError must not bubble write errors, got: %v", err)
+	}
+}

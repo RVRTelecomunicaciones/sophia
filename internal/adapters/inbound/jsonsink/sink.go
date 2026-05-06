@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"io"
 	"sync"
+	"time"
 
 	"github.com/RVRTelecomunicaciones/sophia-cli/internal/domain"
 )
@@ -76,13 +77,15 @@ func (s *Sink) OnApprovalGate(_ context.Context, g domain.ApprovalGate) error {
 	})
 }
 
-// OnError writes an error line. Best-effort: never bubbles write errors up to
-// the runner so that streaming continues for all sinks.
+// OnError writes an error line. Best-effort: write failures are intentionally
+// suppressed so that the runner can call OnError as a catch-all without
+// risking recursive error reporting.
 func (s *Sink) OnError(_ context.Context, e error) error {
-	return s.write(map[string]any{
+	_ = s.write(map[string]any{
 		"type":    "error",
 		"message": e.Error(),
 	})
+	return nil
 }
 
 // OnComplete writes a final terminal-status line.
@@ -108,16 +111,11 @@ func (s *Sink) write(v map[string]any) error {
 	return err
 }
 
-// optionalTime returns an RFC3339 string or nil for zero times, so JSONL lines
-// don't carry meaningless `0001-01-01T00:00:00Z` entries.
-func optionalTime(t interface{ IsZero() bool }) any {
-	type zeroable interface {
-		Format(string) string
-		IsZero() bool
-	}
-	z, ok := t.(zeroable)
-	if !ok || z.IsZero() {
+// optionalTime returns an RFC3339 string with millisecond precision, or nil
+// for zero times so JSONL lines don't carry meaningless 0001-01-01T...Z values.
+func optionalTime(t time.Time) any {
+	if t.IsZero() {
 		return nil
 	}
-	return z.Format("2006-01-02T15:04:05.000Z07:00")
+	return t.Format("2006-01-02T15:04:05.000Z07:00")
 }

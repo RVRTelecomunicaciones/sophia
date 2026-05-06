@@ -156,3 +156,10 @@ func TestOnErrorSuppressesWriteFailure(t *testing.T) {
 		t.Errorf("OnError must not bubble write errors, got: %v", err)
 	}
 }
+
+func TestSinkCloseIsNoOp(t *testing.T) {
+	s := jsonsink.New(jsonsink.Config{Writer: &bytes.Buffer{}})
+	if err := s.Close(); err != nil {
+		t.Errorf("Close() = %v, want nil", err)
+	}
+}

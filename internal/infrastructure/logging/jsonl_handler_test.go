@@ -70,6 +70,17 @@ func TestJSONLHandlerHandleContextDoesNotPanic(t *testing.T) {
 	}
 }
 
+func TestJSONLHandlerWithGroupReturnsHandler(t *testing.T) {
+	var buf bytes.Buffer
+	h := logging.NewJSONLHandler(&buf, slog.LevelInfo)
+	got := h.WithGroup("test_group")
+	if got == nil {
+		t.Fatal("WithGroup returned nil")
+	}
+	// Verify the returned value satisfies slog.Handler.
+	var _ slog.Handler = got
+}
+
 func timeNowForTest() time.Time {
 	return time.Date(2026, 5, 5, 12, 0, 0, 0, time.UTC)
 }

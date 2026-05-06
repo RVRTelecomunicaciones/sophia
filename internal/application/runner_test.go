@@ -283,6 +283,33 @@ func TestRunnerInputRequiresProjectAndMessage(t *testing.T) {
 	}
 }
 
+// ExitError.Error() / Unwrap() --------------------------------------------------
+
+func TestExitErrorErrorWithCause(t *testing.T) {
+	cause := errors.New("orchestrator unreachable")
+	e := &application.ExitError{Code: 3, Err: cause}
+	want := "exit code 3: orchestrator unreachable"
+	if got := e.Error(); got != want {
+		t.Errorf("Error() = %q, want %q", got, want)
+	}
+}
+
+func TestExitErrorErrorWithoutCause(t *testing.T) {
+	e := &application.ExitError{Code: 0}
+	want := "exit code 0"
+	if got := e.Error(); got != want {
+		t.Errorf("Error() = %q, want %q", got, want)
+	}
+}
+
+func TestExitErrorUnwrap(t *testing.T) {
+	cause := errors.New("inner")
+	e := &application.ExitError{Code: 1, Err: cause}
+	if got := e.Unwrap(); got != cause {
+		t.Errorf("Unwrap() = %v, want %v", got, cause)
+	}
+}
+
 // Regression: when ctx is canceled mid-run, the sink must learn about it via
 // OnError before the runner returns. We use a sink that records errors and
 // verify OnError fired even though ctx is canceled.

@@ -10,10 +10,13 @@ import (
 )
 
 type FakeOrchestrator struct {
-	mu         sync.Mutex
-	HealthzErr error
-	changes    map[domain.ChangeID]*domain.Change
-	nextID     int
+	mu                  sync.Mutex
+	HealthzErr          error
+	CreateErr           error
+	GetBlockUntilCancel bool
+	TickHook            func(*domain.Change)
+	changes             map[domain.ChangeID]*domain.Change
+	nextID              int
 }
 
 func NewFakeOrchestrator() *FakeOrchestrator {
@@ -33,6 +36,9 @@ func (f *FakeOrchestrator) Healthz(_ context.Context) error {
 func (f *FakeOrchestrator) CreateChange(_ context.Context, in outbound.CreateChangeInput) (*domain.Change, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	if f.CreateErr != nil {
+		return nil, f.CreateErr
+	}
 	f.nextID++
 	id := domain.ChangeID(fmt.Sprintf("fake-change-%d", f.nextID))
 	c := &domain.Change{
@@ -47,14 +53,25 @@ func (f *FakeOrchestrator) CreateChange(_ context.Context, in outbound.CreateCha
 	return c, nil
 }
 
-func (f *FakeOrchestrator) GetChange(_ context.Context, id domain.ChangeID) (*domain.Change, error) {
+func (f *FakeOrchestrator) GetChange(ctx context.Context, id domain.ChangeID) (*domain.Change, error) {
+	if f.GetBlockUntilCancel {
+		<-ctx.Done()
+		return nil, ctx.Err()
+	}
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	c, ok := f.changes[id]
 	if !ok {
 		return nil, domain.ErrChangeNotFound
 	}
-	return c, nil
+	if f.TickHook != nil {
+		f.TickHook(c)
+	}
+	out := *c
+	if c.Phases != nil {
+		out.Phases = append([]domain.Phase{}, c.Phases...)
+	}
+	return &out, nil
 }
 
 func (f *FakeOrchestrator) ListChanges(_ context.Context, filter outbound.ListChangesFilter) ([]*domain.Change, error) {

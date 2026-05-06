@@ -18,7 +18,6 @@ func newRunCmd(d Deps) *cobra.Command {
 		baseRef       string
 		artifactStore string
 		project       string
-		orchURL       string
 	)
 	cmd := &cobra.Command{
 		Use:   "run [message]",
@@ -36,10 +35,9 @@ func newRunCmd(d Deps) *cobra.Command {
 			}
 			resolved, err := d.Resolver.Resolve(cmd.Context(), application.ResolverInput{
 				Flags: application.ResolverFlags{
-					OrchestratorURL: orchURL,
-					Project:         project,
-					BaseRef:         baseRef,
-					ArtifactStore:   artifactStore,
+					Project:       project,
+					BaseRef:       baseRef,
+					ArtifactStore: artifactStore,
 				},
 				Env:            envSnapshot(),
 				UserConfigPath: d.UserConfigPath,
@@ -65,12 +63,13 @@ func newRunCmd(d Deps) *cobra.Command {
 			return nil
 		},
 	}
+	// --orchestrator-url ships in M5 (orch client needs per-call URL support).
+	// Set SOPHIA_ORCHESTRATOR_URL at process start instead.
 	cmd.Flags().BoolVar(&noTUI, "no-tui", false, "stream JSONL to stdout instead of a TUI (required in M4)")
 	cmd.Flags().BoolVar(&jsonOut, "json", false, "machine-readable JSON output (required in M4 with --no-tui)")
 	cmd.Flags().StringVar(&baseRef, "base-ref", "", "override base_ref")
 	cmd.Flags().StringVar(&artifactStore, "artifact-store", "", "override artifact_store mode")
 	cmd.Flags().StringVar(&project, "project", "", "override project slug")
-	cmd.Flags().StringVar(&orchURL, "orchestrator-url", "", "override orchestrator URL")
 	return cmd
 }
 

@@ -38,7 +38,13 @@ func New(cfg Config) (*cobra.Command, error) {
 		cfg.LogWriter = os.Stderr
 	}
 	if cfg.OrchestratorURL == "" {
-		cfg.OrchestratorURL = DefaultOrchestratorURL
+		// SOPHIA_ORCHESTRATOR_URL takes effect at bootstrap; --orchestrator-url
+		// arrives in M5 once the orch client supports per-call rebinding.
+		if v := os.Getenv(application.EnvOrchestratorURL); v != "" {
+			cfg.OrchestratorURL = v
+		} else {
+			cfg.OrchestratorURL = DefaultOrchestratorURL
+		}
 	}
 	logger := NewLogger(cfg.LogWriter, cfg.LogLevel)
 	slog.SetDefault(logger)

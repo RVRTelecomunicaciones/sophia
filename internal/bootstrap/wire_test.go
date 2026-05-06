@@ -3,6 +3,7 @@ package bootstrap_test
 import (
 	"testing"
 
+	"github.com/RVRTelecomunicaciones/sophia-cli/internal/application"
 	"github.com/RVRTelecomunicaciones/sophia-cli/internal/bootstrap"
 )
 
@@ -60,4 +61,16 @@ func TestNewWiresM4Run(t *testing.T) {
 	if c == nil {
 		t.Fatal("run cmd is nil")
 	}
+}
+
+func TestNewHonorsOrchestratorURLEnv(t *testing.T) {
+	t.Setenv(application.EnvOrchestratorURL, "http://from-env:1234")
+	root, err := bootstrap.New(bootstrap.Config{LogWriter: nil})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Smoke: command tree built without panic. The actual URL injection
+	// is verified by the e2e smoke test (Task 9) which runs the binary
+	// with the env set.
+	_ = root
 }

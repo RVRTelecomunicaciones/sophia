@@ -84,10 +84,11 @@ func New(cfg Config) (*cobra.Command, error) {
 		ProjectStore: projectStore,
 	})
 	statusReader := application.NewStatusReader(application.StatusDeps{
+		Orch:         orch,
 		State:        state,
 		Git:          git,
 		ProjectStore: projectStore,
-	})
+	}, application.StatusOptions{})
 
 	resolver := application.NewConfigResolver(application.ConfigResolverDeps{
 		ProjectStore: projectStore,
@@ -118,21 +119,48 @@ func New(cfg Config) (*cobra.Command, error) {
 		}, application.RunnerOptions{})
 	}
 
+	// Lister implements `sophia changes` (M8). Pure pass-through over
+	// OrchestratorClient.ListChanges; project-default resolution lives in
+	// cli/changes.go.
+	lister := application.NewLister(application.ListerDeps{Orch: orch})
+
+	// AttacherFactory mirrors RunnerFactory for `sophia attach` (M8). Each
+	// invocation gets its own Runner+Attacher pair so lifecycles stay
+	// isolated.
+	attacherFactory := func(sink inbound.EventSink) *application.Attacher {
+		runner := application.NewRunner(application.RunnerDeps{
+			Orch:        orch,
+			State:       state,
+			Git:         git,
+			Sink:        sink,
+			EventStream: stream,
+		}, application.RunnerOptions{})
+		return application.NewAttacher(application.AttacherDeps{
+			Orch:   orch,
+			State:  state,
+			Git:    git,
+			Runner: runner,
+		})
+	}
+
 	userConfigPath := filepath.Join(xdg.ConfigRoot, "config.yaml")
 
 	info := NewVersionInfo()
 	deps := cli.Deps{
-		Doctor:         doctor,
-		Provisioner:    provisioner,
-		Initializer:    initializer,
-		StatusReader:   statusReader,
-		RunnerFactory:  runnerFactory,
-		Resolver:       resolver,
-		Browser:        browser,
-		UserConfigPath: userConfigPath,
-		Version:        info.Version,
-		Commit:         info.Commit,
-		BuildDate:      info.BuildDate,
+		Doctor:          doctor,
+		Provisioner:     provisioner,
+		Initializer:     initializer,
+		StatusReader:    statusReader,
+		Lister:          lister,
+		Orch:            orch,
+		RunnerFactory:   runnerFactory,
+		AttacherFactory: attacherFactory,
+		Resolver:        resolver,
+		Browser:         browser,
+		UserConfigPath:  userConfigPath,
+		Version:         info.Version,
+		Commit:          info.Commit,
+		BuildDate:       info.BuildDate,
 	}
 	return cli.NewRoot(deps), nil
 }

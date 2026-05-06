@@ -77,6 +77,17 @@ func TestNewWiresM5SSEStream(t *testing.T) {
 	}
 }
 
+func TestNewWiresM6RunnerFactory(t *testing.T) {
+	root, err := bootstrap.New(bootstrap.Config{LogWriter: nil})
+	if err != nil {
+		t.Fatal(err)
+	}
+	c, _, err := root.Find([]string{"run"})
+	if err != nil || c == nil {
+		t.Fatalf("run cmd missing: %v", err)
+	}
+}
+
 func TestNewHonorsOrchestratorURLEnv(t *testing.T) {
 	t.Setenv(application.EnvOrchestratorURL, "http://from-env:1234")
 	root, err := bootstrap.New(bootstrap.Config{LogWriter: nil})

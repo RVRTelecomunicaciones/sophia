@@ -1,20 +1,37 @@
 package cli
 
 import (
+	"io"
+
 	"github.com/spf13/cobra"
 
 	"github.com/RVRTelecomunicaciones/sophia-cli/internal/application"
+	"github.com/RVRTelecomunicaciones/sophia-cli/internal/ports/inbound"
 )
+
+// RunnerFactory builds a *application.Runner with the caller-provided sink.
+type RunnerFactory func(sink inbound.EventSink) *application.Runner
 
 type Deps struct {
 	Doctor       *application.DoctorService
 	Provisioner  *application.Provisioner
 	Initializer  *application.Initializer
 	StatusReader *application.StatusReader
-	Runner       *application.Runner
 	Resolver     *application.ConfigResolver
 
-	UserConfigPath string // optional; passed to ConfigResolver
+	// RunnerFactory is the M6 way of constructing a Runner — sink-injected
+	// at command time. Mandatory for `sophia run`.
+	RunnerFactory RunnerFactory
+
+	// JSONSinkOverride lets tests inject a recording sink instead of
+	// jsonsink.New(os.Stdout). Production leaves this nil.
+	JSONSinkOverride inbound.EventSink
+
+	// TUIOutput is the writer the TUI program renders to. Defaults to
+	// os.Stdout. Tests inject a buffer.
+	TUIOutput io.Writer
+
+	UserConfigPath string
 
 	Version   string
 	Commit    string

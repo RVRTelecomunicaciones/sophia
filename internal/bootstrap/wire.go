@@ -10,7 +10,6 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/RVRTelecomunicaciones/sophia-cli/internal/adapters/inbound/cli"
-	"github.com/RVRTelecomunicaciones/sophia-cli/internal/adapters/inbound/jsonsink"
 	"github.com/RVRTelecomunicaciones/sophia-cli/internal/adapters/outbound/composeexec"
 	"github.com/RVRTelecomunicaciones/sophia-cli/internal/adapters/outbound/filestate"
 	"github.com/RVRTelecomunicaciones/sophia-cli/internal/adapters/outbound/gitcli"
@@ -20,6 +19,7 @@ import (
 	"github.com/RVRTelecomunicaciones/sophia-cli/internal/adapters/outbound/xdgpaths"
 	"github.com/RVRTelecomunicaciones/sophia-cli/internal/adapters/outbound/yamlconfig"
 	"github.com/RVRTelecomunicaciones/sophia-cli/internal/application"
+	"github.com/RVRTelecomunicaciones/sophia-cli/internal/ports/inbound"
 )
 
 // DefaultOrchestratorURL is used when neither flags nor env override it.
@@ -103,16 +103,17 @@ func New(cfg Config) (*cobra.Command, error) {
 		Heartbeat:  ssestream.DefaultHeartbeat,
 	})
 
-	// JSON sink writes to stdout. The runner is constructed with this sink
-	// for V1; M6 will swap to a TUI sink based on flags.
-	sink := jsonsink.New(jsonsink.Config{Writer: os.Stdout})
-	runner := application.NewRunner(application.RunnerDeps{
-		Orch:        orch,
-		State:       state,
-		Git:         git,
-		Sink:        sink,
-		EventStream: stream,
-	}, application.RunnerOptions{})
+	// RunnerFactory builds a Runner with the caller-provided sink. The sink is
+	// chosen at command time: TUI bridge in default mode, jsonsink in --no-tui --json mode.
+	runnerFactory := func(sink inbound.EventSink) *application.Runner {
+		return application.NewRunner(application.RunnerDeps{
+			Orch:        orch,
+			State:       state,
+			Git:         git,
+			Sink:        sink,
+			EventStream: stream,
+		}, application.RunnerOptions{})
+	}
 
 	userConfigPath := filepath.Join(xdg.ConfigRoot, "config.yaml")
 
@@ -122,7 +123,7 @@ func New(cfg Config) (*cobra.Command, error) {
 		Provisioner:    provisioner,
 		Initializer:    initializer,
 		StatusReader:   statusReader,
-		Runner:         runner,
+		RunnerFactory:  runnerFactory,
 		Resolver:       resolver,
 		UserConfigPath: userConfigPath,
 		Version:        info.Version,

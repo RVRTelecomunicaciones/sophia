@@ -3437,4 +3437,134 @@ Two execution options:
 
 **2. Sequential single-agent** — use `superpowers:executing-plans` and walk Task 1 → Task 9 in order. Recommended only if you want to keep the full context window for cross-task surprises (most likely Tasks 1, 4, 6, and 8 if the bubbletea v2 API differs from this plan's assumptions — see RM6-01).
 
+---
+
+## Implementation Notes — Deviations from Plan
+
+The plan above was the design intent; this section captures what actually shipped. Each entry: what the plan said, what was implemented, why, and where it lives.
+
+### Task 1 — Dependencies
+
+### 1. Bubble Tea import path: `charm.land` not `charmbracelet`
+
+- **Plan**: `github.com/charmbracelet/bubbletea/v2` (with fallback to `charm.land/...` noted as possible)
+- **Implemented**: `charm.land/bubbletea/v2 v2.0.6`, `charm.land/lipgloss/v2 v2.0.3`, `charm.land/bubbles/v2 v2.1.0`
+- **File**: `go.mod` (lines 13–15)
+- **Why**: The `github.com/charmbracelet/bubbletea/v2` module declares its canonical import path as `charm.land/bubbletea/v2` internally. The `charm.land/...` path is the correct 2025 canonical path for v2 of the Charm stack.
+
+### 2. Go toolchain bumped to 1.25
+
+- **Plan**: Go 1.24.x
+- **Implemented**: `go 1.25.0`
+- **File**: `go.mod` (line 3)
+- **Why**: `charm.land/bubbletea/v2 v2.0.6` declares a minimum Go version of 1.25.0. The bump was a forced side-effect of adding the dependency.
+
+### 3. `teatest` stays at `github.com/charmbracelet/x/exp/teatest/v2`
+
+- **Plan**: same package used (verified as unchanged)
+- **Implemented**: `github.com/charmbracelet/x/exp/teatest/v2@v2.0.0-20260503005035-c113ba3d2310`
+- **File**: `go.mod` (line 21)
+- **Why**: `teatest` was not migrated to `charm.land` — it remains under the `charmbracelet/x/exp` path. No deviation in import path for this dependency.
+
+### Task 2 — Bridge
+
+### 4. `Close()` is non-blocking
+
+- **Plan**: implied `wg.Wait()` inside `Close()` to ensure the worker finished
+- **Implemented**: `Close()` signals via the `done` channel and sets `closed = true`, then returns immediately without waiting for the worker
+- **File**: `internal/adapters/inbound/tui/bridge.go` (`Close()`, lines 162–173; worker shutdown, lines 271–308)
+- **Why**: With a permanently-wedged `Sender.Send` (a real test-pressure scenario), a `wg.Wait()` in `Close()` deadlocks. The worker exits on its own once `Send` unblocks; in production `tea.Program.Send` never blocks indefinitely.
+
+### 5. Bridge tests fill 257 events, not 256
+
+- **Plan**: fill 256 events to saturate the buffer
+- **Implemented**: 257 events pushed before the assertion
+- **File**: `internal/adapters/inbound/tui/bridge_test.go` (`TestBridgeDropsHeartbeatFirstUnderPressure`, line 163)
+- **Why**: The worker may dequeue one event before the loop finishes, leaving a free slot. 257 events guarantees the buffer is full regardless of the dequeue race: 1 event stuck in `Send` + 256 queued = truly full at the heartbeat push.
+
+### 6. `OnSnapshot` deep-copies `Phases` slice
+
+- **Plan**: `cp := *c` (shallow struct copy — slice header copied, underlying array shared)
+- **Implemented**: deep-copy of `Phases` via `make + copy` after the struct copy
+- **File**: `internal/adapters/inbound/tui/bridge.go` (`OnSnapshot`, lines 126–130)
+- **Why**: Code review Medium — a caller mutating `c.Phases` between `OnSnapshot` returning and the worker delivering `SnapshotMsg` would race the queued message. Verified by `TestBridgeOnSnapshotDeepCopiesPhases`.
+
+### 7. Bridge priority-drain on `Close`
+
+- **Plan**: worker exits as soon as current `Send` completes when `Close` fires, dropping pending queue entries
+- **Implemented**: after each `Send`, if `closed == true` the worker prunes all non-priority entries (counting them as drops) and continues draining priority items before exiting
+- **File**: `internal/adapters/inbound/tui/bridge.go` (`worker()`, lines 288–305)
+- **Why**: Code review High — pending `CompleteMsg` / `ErrorMsg` are priority items; dropping them silently would leave the TUI without a terminal state. Verified by `TestBridgeDrainsPriorityItemsOnClose`.
+
+### 8. `fakeSender` uses nil-channel pattern
+
+- **Plan**: `block bool` flag plus a separate release channel
+- **Implemented**: nil-channel pattern — `release chan struct{}`; nil means unblocked, a non-nil unbuffered channel means blocked until `close(release)`
+- **File**: `internal/adapters/inbound/tui/bridge_test.go` (`fakeSender`, lines 15–61)
+- **Why**: Code review Low — a `block bool` read outside a lock is a data race. The nil-channel pattern is structurally race-free: reading a nil channel blocks forever; closing it unblocks all readers atomically.
+
+### Task 5 — Styles
+
+### 9. `lipgloss.Color` is a function, not a type
+
+- **Plan**: `lipgloss.Color("12")` (ambiguous whether type-conversion or function call)
+- **Implemented**: confirmed function call returning `color.Color`; `Width()` and `Render()` exist; `Render()` emits full ANSI regardless of `NO_COLOR`
+- **File**: `internal/adapters/inbound/tui/styles.go` (throughout `newStyles()`)
+- **Why**: lipgloss v2 API verification during implementation. No code change required — the call syntax is identical whether `Color` is a function or a type; the verification confirmed correct usage.
+
+### 10. `NO_COLOR` does not suppress lipgloss `Render`
+
+- **Plan**: assumed `NO_COLOR=1` would force ASCII output from `Style.Render()`
+- **Implemented**: tests use `strings.Contains` (ANSI-agnostic substring matching) since lipgloss v2 `Render()` always emits full ANSI at the render layer; `NO_COLOR` is honoured at the output/writer layer only
+- **File**: `internal/adapters/inbound/tui/setup_test.go` (lines 8–16)
+- **Why**: lipgloss v2 architectural change. The `NO_COLOR` env var is set as documentation intent and for future `colorprofile.Writer` usage, not to suppress `Render`.
+
+### Task 5 — View
+
+### 11. `View()` is pure — no `time.Now()`
+
+- **Plan**: in-progress phases would show live duration via `time.Now()`
+- **Implemented**: duration is only rendered when both `StartedAt` AND `EndedAt` are set (i.e., the phase is complete)
+- **File**: `internal/adapters/inbound/tui/view_timeline.go` (`renderPhaseRow`, lines 58–65)
+- **Why**: `TestViewIsPure` required fully deterministic output. A tick-based update for live running-phase duration is deferred to M7.
+
+### Task 4 — Update
+
+### 12. `approvalGateAsEvent` uses `domain.Event` directly
+
+- **Plan**: inline-struct workaround to avoid a (presumed) import cycle between `tui` and `domain`
+- **Implemented**: clean `domain.Event{...}` construction
+- **File**: `internal/adapters/inbound/tui/update.go` (`approvalGateAsEvent`, lines 56–63)
+- **Why**: `domain.Event` is freely constructible from the `tui` package — no import cycle exists. The workaround was unnecessary.
+
+### Task 6 — Program
+
+### 13. `v2 Model.Init()` returns `tea.Cmd` only
+
+- **Plan**: `Init() (tea.Model, tea.Cmd)` (bubbletea v1 signature)
+- **Implemented**: `Init() tea.Cmd`
+- **File**: `internal/adapters/inbound/tui/program.go` (`rootModel.Init()`, line 53); `test/tui/timeline_test.go` (`wrappedModel.Init()`, line 131)
+- **Why**: bubbletea v2 simplified `Init` to return only a `Cmd` — the model is no longer returned from `Init`.
+
+### 14. `v2 Model.View()` returns `tea.View`
+
+- **Plan**: `View() string`
+- **Implemented**: `View() tea.View` via `tea.NewView(s)`
+- **File**: `internal/adapters/inbound/tui/program.go` (`rootModel.View()`, lines 63–65); `test/tui/timeline_test.go` (`wrappedModel.View()`, lines 141–143)
+- **Why**: bubbletea v2 wraps the rendered string in a `tea.View` struct rather than accepting a raw string.
+
+### 15. `Program.Close()` guarded by `running` flag
+
+- **Plan**: `Close()` called `tea.Program.Quit()` unconditionally
+- **Implemented**: `running bool` field — `Quit()` is called only after `Run()` has been invoked
+- **File**: `internal/adapters/inbound/tui/program.go` (`Program.Close()`, lines 148–151; `running` flag set in `Run()`, line 112)
+- **Why**: bubbletea v2 `Quit()` (and `Send()`) blocks waiting for the program to start when called before `Run()`. Calling `Close()` on an unstarted program (e.g., in a deferred cleanup path after a constructor error) would deadlock.
+
+### 16. Auto-inject `WithInput(nil)` for headless output
+
+- **Plan**: `WithInput` set only if `cfg.Input != nil`
+- **Implemented**: when `cfg.Output != nil` and `cfg.Input == nil`, `tea.WithInput(nil)` is also appended to disable TTY opening
+- **File**: `internal/adapters/inbound/tui/program.go` (`NewProgram`, lines 85–88)
+- **Why**: bubbletea v2 attempts to open `/dev/tty` for keyboard input when stdout is redirected and no explicit input is set. This fails in CI (no TTY available). The auto-inject is conditional on `cfg.Output != nil` (the headless signal) so production usage with a real terminal is unaffected.
+
 Either way: keep an eye on D-M6-01 (the bubbletea import-path verification gate at the top of Task 1). Same for the v2 API drift in Tasks 4 (KeyPressMsg shape), 6 (Program options + ErrorKilled), and 8 (teatest helpers). If any of those four hit a mismatch with the actual installed module, STOP and ask the user before improvising.

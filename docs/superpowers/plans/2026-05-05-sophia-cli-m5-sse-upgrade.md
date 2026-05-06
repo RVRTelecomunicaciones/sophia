@@ -2746,3 +2746,151 @@ Two execution options:
 **2. Sequential single-agent** — use `superpowers:executing-plans` and walk Task 1 → Task 9 in order. Recommended only if you want to keep the full context window for any cross-task surprises (most likely Task 5 if `tmaxmax/go-sse`'s API differs from this plan's assumptions — see RM5-01).
 
 Either way: keep an eye on D-M5-01 (the `tmaxmax/go-sse` verification gate at the top of Task 5's implementation) — that is the single most likely place this plan will need adjustment during execution.
+
+---
+
+## Implementation Notes — Deviations from Plan
+
+The plan above was the design intent; this section captures what actually shipped. Each entry: what the plan said, what was implemented, why, and where it lives.
+
+### Task 2 — Redactor
+
+### 1. Redactor JWT regex tightened
+
+- **Plan**: `[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}`
+- **Implemented**: `\b[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{32,}\b`
+- **File**: `internal/adapters/outbound/ssestream/redactor.go` (line 20)
+- **Why**: Code review found false-positives on legitimate dotted strings such as `task_execution.phase_started.explore_mode` and ULID triplets. Word boundaries prevent matching identifiers embedded inside larger strings; 32-char third-segment minimum reflects that real JWT signatures are always ≥32 base64url chars.
+
+### 2. `RedactPayload(nil)` returns nil
+
+- **Plan**: implied a non-nil empty map would be returned for nil input
+- **Implemented**: nil-guard at the top of `RedactPayload` returns nil immediately
+- **File**: `internal/adapters/outbound/ssestream/redactor.go` (line 80)
+- **Why**: Preserves nil-in → nil-out semantics expected by callers; the parser's nil-guard (line 71 of `parser.go`) already skips redaction when `payload == nil`.
+
+### Task 3 — Parser
+
+### 3. Timestamp tolerance via `flexTime`
+
+- **Plan**: plain `time.Time` field with `omitempty`
+- **Implemented**: custom `flexTime` type with `UnmarshalJSON` accepting `""` and `null` as zero time
+- **File**: `internal/adapters/outbound/ssestream/parser.go` (`flexTime` type, lines 27–36)
+- **Why**: Code review caught that Go's `time.Time.UnmarshalJSON` rejects empty-string input with a parse error. Spec §5.4 says missing fields default to empty — without `flexTime`, events with `""` timestamps would be silently dropped.
+
+### Task 4 — Reconnect primitives
+
+### 4. `Clock.Now()` removed from interface
+
+- **Plan**: `Clock { Now() time.Time; AfterFunc(d, fn) StoppableTimer }`
+- **Implemented**: `Clock { AfterFunc(d, fn) StoppableTimer }` (`Now` removed)
+- **File**: `internal/adapters/outbound/ssestream/reconnect.go` (`Clock` interface, line 18)
+- **Why**: Code review found `Now()` was dead — never called by `Backoff`, `RetryBudget`, or `Watchdog`.
+
+### 5. Watchdog single-use semantics documented
+
+- **Plan**: single-use behaviour was implicit
+- **Implemented**: doc comment on `Watchdog` struct explicitly states "once Done fires or Stop is called, the watchdog is permanently disabled and Reset becomes a no-op. Callers create a new Watchdog per connection attempt."
+- **File**: `internal/adapters/outbound/ssestream/reconnect.go` (`Watchdog` struct, lines 126–130)
+- **Why**: Code review for clarity; the comment sets a contract that prevents callers from attempting to reuse a watchdog across reconnect attempts.
+
+### Task 5 — SSE Client
+
+### 6. SSE Client: disable go-sse internal retry
+
+- **Plan**: `sse.NewConnection(req)` called on a bare `*sse.Client` (go-sse's default has infinite retry)
+- **Implemented**: `sse.Client{Backoff: sse.Backoff{MaxRetries: -1}}` constructed per `connectOnce` call
+- **File**: `internal/adapters/outbound/ssestream/client.go` (lines 209–215)
+- **Why**: go-sse v0.11.0 retries indefinitely by default — `Connect()` never returns on a clean server close without this. The outer reconnect loop in `run()` is the sole authority over reconnect policy.
+
+### 7. Bare `http.Client` (no `httpclient.New`)
+
+- **Plan**: `httpclient.New(httpclient.Config{Timeout: 0})`
+- **Implemented**: bare `&http.Client{}`
+- **File**: `internal/adapters/outbound/ssestream/client.go` (`New()`, lines 76–80)
+- **Why**: Discovery during implementation: `httpclient.New(Config{Timeout:0})` applies a 5 s default timeout internally. Long-lived SSE connections require no timeout.
+
+### 8. Per-attempt context cancel in `connectOnce`
+
+- **Plan**: used the outer `ctx` directly for the HTTP request
+- **Implemented**: `attemptCtx, cancelAttempt := context.WithCancel(ctx); defer cancelAttempt()` at the top of `connectOnce`
+- **File**: `internal/adapters/outbound/ssestream/client.go` (`connectOnce`, lines 194–195)
+- **Why**: Code review High — when the watchdog fires, the goroutine running `conn.Connect()` continued on the stale connection. The per-attempt cancel ensures the goroutine exits cleanly on every return path from `connectOnce`.
+
+### 9. `classifyConnectErr` scoped to `ConnectionError.Err`
+
+- **Plan**: `strings.Contains(err.Error(), "401")`
+- **Implemented**: `errors.As(err, &connErr)` then `strings.Contains(connErr.Err.Error(), "401")`
+- **File**: `internal/adapters/outbound/ssestream/client.go` (`classifyConnectErr`, lines 267–273)
+- **Why**: Code review Medium — scoping the 401/403 check to the inner go-sse validator error (not the full wrapped message) is more stable across go-sse format changes.
+
+### 10. `buildURL` panics on missing `%s`
+
+- **Plan**: silently dropped the ChangeID if `Path` lacked `%s`
+- **Implemented**: `New()` panics if a non-empty `Path` does not contain `%s`
+- **File**: `internal/adapters/outbound/ssestream/client.go` (`New()`, lines 71–73)
+- **Why**: Code review Medium — converts a silent misconfiguration into a loud bootstrap-time failure.
+
+### 11. Heartbeats reset retry budget
+
+- **Plan**: only domain events (non-heartbeat) reset the budget
+- **Implemented**: heartbeats also set `anyEvent = true`, resetting the budget on the next outer-loop iteration
+- **File**: `internal/adapters/outbound/ssestream/client.go` (`connectOnce` callback, lines 222–225)
+- **Why**: Code review Medium — heartbeats prove the connection is healthy; resetting the budget on heartbeat reception is the conservative, correct interpretation.
+
+### 12. `ConfigResolver`: `ArtifactStore` validation
+
+- **Plan**: `domain.ArtifactStoreMode(in.Flags.ArtifactStore)` unconditional cast
+- **Implemented**: `mode.IsValid()` gate before accepting the flag value; returns a wrapped `ErrConfigMissing` on invalid input
+- **File**: `internal/application/configresolver.go` (lines 129–134)
+- **Why**: Code review — silent bad data reaching the orchestrator was a real risk. `domain.ArtifactStoreMode` already exposes `IsValid()`.
+
+### 13. Exported env constants
+
+- **Plan**: env key strings (`SOPHIA_ORCHESTRATOR_URL`, etc.) as scattered string literals inside the resolver
+- **Implemented**: `EnvOrchestratorURL`, `EnvProject`, `EnvBaseRef` exported as package-level constants
+- **File**: `internal/application/configresolver.go` (lines 19–21)
+- **Why**: Task 8's cobra `run.go` (`envSnapshot()`) needs the same keys; exporting avoids duplication and keeps the two consumers in sync.
+
+### Task 6 — Runner
+
+### 14. Runner stream-error exit code
+
+- **Plan**: stream-phase non-ctx errors → `ExitError{Code: 4}`
+- **Implemented**: the `CreateChange` non-ctx error path was corrected to `ExitError{Code: 3}` per spec §2.3 (commit b04f21d); the stream post-close error path (`refreshAfterStreamEnd`) retains `Code: 4`
+- **File**: `internal/application/runner.go` (lines 113–114 for create path; lines 135–136 for stream path)
+- **Why**: Code review identified that `ErrChangeNotFound` / `ErrUnreachable` from `CreateChange` map to Code 3 per spec §2.3. The stream-close path (`GetChange` snapshot) was judged as transient (Code 4) since a successful connection already existed.
+
+### 15. Runner: `context.WithoutCancel` on cancellation
+
+- **Plan**: `OnError` was skipped on ctx-canceled paths (ctx already dead)
+- **Implemented**: `r.deps.Sink.OnError(context.WithoutCancel(ctx), err)` called before returning on ctx-canceled paths
+- **File**: `internal/application/runner.go` (lines 110, 130–133)
+- **Why**: Code review — sinks must learn about the interruption even after the context is cancelled. `context.WithoutCancel` propagates values without the cancellation signal.
+
+### Task 6 — Test fakes
+
+### 16. `TickHook` stays inside `FakeOrchestrator` mutex
+
+- **Plan**: implied moving the hook invocation outside the mutex
+- **Implemented**: hook fires inside the mutex with an explanatory contract comment
+- **File**: `test/fakes/orchestrator.go` (`GetChange`, lines 67–73)
+- **Why**: Moving it outside would break `TestRunnerCreatesAndPollsUntilDone` — the hook mutates the stored `Change` so that the next `GetChange` call observes the updated state. The contract comment documents that hooks must not call back into the orchestrator.
+
+### Task 8 — CLI
+
+### 17. `--orchestrator-url` flag dropped
+
+- **Plan**: `run` command included `--orchestrator-url` flag
+- **Implemented**: flag removed entirely; orchestrator URL is env-only via `SOPHIA_ORCHESTRATOR_URL`
+- **File**: `internal/adapters/inbound/cli/run.go`
+- **Why**: Code review — the flag was registered but its value never reached the orchestrator client, which was constructed at bootstrap time with the default URL. An unimplemented flag is actively misleading. Per-call URL rebinding is deferred to M7+.
+
+### Task 9 — e2e
+
+### 18. e2e stub: 401 on second connection
+
+- **Plan**: stub emits one event then closes cleanly
+- **Implemented**: stub returns HTTP 401 on the second `/events` connection to terminate the retry loop cleanly
+- **File**: `test/e2e/run_polling_test.go` (lines 51–54)
+- **Why**: The SSE client resets the retry budget whenever `anyEvent == true`. A single-event-then-close stub caused infinite reconnects. A 401 response triggers `errAuthAbort`, which causes the outer `run()` loop to exit without consuming the budget.

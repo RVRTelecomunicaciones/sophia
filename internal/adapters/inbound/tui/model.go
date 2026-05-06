@@ -25,6 +25,27 @@ type PhaseRow struct {
 	HasApproval bool
 }
 
+// ViewType selects which TUI view is currently displayed.
+type ViewType int
+
+const (
+	// ViewTimeline shows the 9-phase Timeline (M6 default view).
+	ViewTimeline ViewType = iota
+	// ViewApplyBoard shows the ApplyBoard groups → tasks → agents tree.
+	ViewApplyBoard
+)
+
+// String returns a debug-friendly name.
+func (v ViewType) String() string {
+	switch v {
+	case ViewTimeline:
+		return "timeline"
+	case ViewApplyBoard:
+		return "applyboard"
+	}
+	return "unknown"
+}
+
 // ModelConfig configures the initial Model.
 type ModelConfig struct {
 	ChangeID domain.ChangeID
@@ -42,6 +63,11 @@ type Model struct {
 	width            int
 	height           int
 	errors           []string
+
+	// M7 additions:
+	currentView ViewType
+	bannerGate  *domain.ApprovalGate
+	applyBoard  ApplyBoardState
 }
 
 // NewModel constructs a Model with all 9 phases in PhaseStatusPending.
@@ -93,6 +119,28 @@ func (m Model) Errors() []string {
 	copy(out, m.errors)
 	return out
 }
+
+// CurrentView returns the active view (Timeline or ApplyBoard).
+func (m Model) CurrentView() ViewType { return m.currentView }
+
+// WithCurrentView returns a new Model with the active view set to v.
+func (m Model) WithCurrentView(v ViewType) Model {
+	m.currentView = v
+	return m
+}
+
+// BannerGate returns the active ApprovalGate (banner state) or nil if hidden.
+func (m Model) BannerGate() *domain.ApprovalGate { return m.bannerGate }
+
+// WithBannerGate returns a new Model whose banner state is set to gate.
+// Pass nil to hide the banner.
+func (m Model) WithBannerGate(gate *domain.ApprovalGate) Model {
+	m.bannerGate = gate
+	return m
+}
+
+// ApplyBoard returns the ApplyBoard state.
+func (m Model) ApplyBoard() ApplyBoardState { return m.applyBoard }
 
 // Resize returns a new Model with updated terminal dimensions.
 func (m Model) Resize(width, height int) Model {
@@ -157,18 +205,48 @@ func (m Model) ApplySnapshot(c *domain.Change) Model {
 			EndedAt:    p.EndedAt,
 		}
 	}
+	// M7: clear banner if snapshot shows we've moved past the gated phase.
+	if m.bannerGate != nil {
+		if pt, ok := currentPhaseType(c); ok {
+			if isPhaseAfter(pt, m.bannerGate.Phase) {
+				m.bannerGate = nil
+			}
+		}
+	}
 	return m
 }
 
 // ApplyEvent integrates a single domain.Event into the model.
+//
+// The set of event types it understands grew in M7:
+//
+//   - phase.started, phase.completed       — Timeline phase transitions
+//   - approval.required                    — sets bannerGate AND marks phase row
+//   - approval.resolved                    — clears bannerGate (M7)
+//   - task.started, task.completed         — feeds ApplyBoard (M7)
+//   - agent.spawned, agent.completed       — feeds ApplyBoard (M7)
+//
+// Side-effect on banner clearing:
+//   - phase.started for any phase whose ordinal is STRICTLY GREATER than
+//     bannerGate.Phase clears the banner (forward progress, D-M7-07).
 func (m Model) ApplyEvent(ev domain.Event) Model {
 	switch ev.Type {
 	case "phase.started":
-		return m.applyPhaseStarted(ev)
+		m = m.applyPhaseStarted(ev)
+		m = m.maybeClearBannerOnForwardProgress(ev)
+		return m
 	case "phase.completed":
 		return m.applyPhaseCompleted(ev)
 	case "approval.required":
-		return m.applyApprovalRequired(ev)
+		m = m.applyApprovalRequired(ev)
+		m = m.applyBannerFromEvent(ev)
+		return m
+	case "approval.resolved":
+		m.bannerGate = nil
+		return m
+	case "task.started", "task.completed", "agent.spawned", "agent.completed":
+		m.applyBoard = m.applyBoard.ApplyEvent(ev)
+		return m
 	default:
 		return m
 	}
@@ -237,6 +315,73 @@ func (m Model) applyApprovalRequired(ev domain.Event) Model {
 	}
 	m.phases[idx].HasApproval = true
 	return m
+}
+
+// applyBannerFromEvent constructs an ApprovalGate from an approval.required
+// event payload and sets it as the current bannerGate. Spec §5.4 payload
+// keys: gate_url, reason, risk, policy, phase, change_id.
+func (m Model) applyBannerFromEvent(ev domain.Event) Model {
+	gate := domain.ApprovalGate{TraceID: ev.TraceID}
+	if ev.Payload == nil {
+		m.bannerGate = &gate
+		return m
+	}
+	gate.URL, _ = ev.Payload["gate_url"].(string)
+	gate.Reason, _ = ev.Payload["reason"].(string)
+	gate.Risk, _ = ev.Payload["risk"].(string)
+	gate.Policy, _ = ev.Payload["policy"].(string)
+	if ph, ok := ev.Payload["phase"].(string); ok {
+		gate.Phase = domain.PhaseType(ph)
+	} else if ph, ok := ev.Payload["phase_type"].(string); ok {
+		gate.Phase = domain.PhaseType(ph)
+	}
+	if cid, ok := ev.Payload["change_id"].(string); ok {
+		gate.ChangeID = domain.ChangeID(cid)
+	}
+	m.bannerGate = &gate
+	return m
+}
+
+// maybeClearBannerOnForwardProgress clears bannerGate when ev is a
+// phase.started for a phase strictly later than bannerGate.Phase.
+func (m Model) maybeClearBannerOnForwardProgress(ev domain.Event) Model {
+	if m.bannerGate == nil {
+		return m
+	}
+	pt := phaseTypeFromPayload(ev.Payload)
+	if pt == "" {
+		return m
+	}
+	if isPhaseAfter(pt, m.bannerGate.Phase) {
+		m.bannerGate = nil
+	}
+	return m
+}
+
+// isPhaseAfter reports whether candidate's ordinal in domain.AllPhases() is
+// strictly greater than reference's ordinal. Returns false if either phase
+// is unknown.
+func isPhaseAfter(candidate, reference domain.PhaseType) bool {
+	c := indexOfPhase(candidate)
+	r := indexOfPhase(reference)
+	if c < 0 || r < 0 {
+		return false
+	}
+	return c > r
+}
+
+// currentPhaseType returns the PhaseType of the snapshot's CurrentPhaseID,
+// or ("", false) if no phase row in the snapshot matches.
+func currentPhaseType(c *domain.Change) (domain.PhaseType, bool) {
+	if c == nil {
+		return "", false
+	}
+	for _, p := range c.Phases {
+		if p.ID == c.CurrentPhaseID {
+			return p.Type, true
+		}
+	}
+	return "", false
 }
 
 // indexOfPhase returns the index of pt in domain.AllPhases(), or -1.

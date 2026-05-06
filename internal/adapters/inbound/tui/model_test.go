@@ -173,3 +173,185 @@ func TestModelImmutability(t *testing.T) {
 	}
 	_ = m2
 }
+
+func TestModelDefaultViewIsTimeline(t *testing.T) {
+	m := tui.NewModel(tui.ModelConfig{ChangeID: domain.ChangeID("01HX")})
+	if m.CurrentView() != tui.ViewTimeline {
+		t.Errorf("default view = %v, want ViewTimeline", m.CurrentView())
+	}
+}
+
+func TestModelWithCurrentView(t *testing.T) {
+	m := tui.NewModel(tui.ModelConfig{ChangeID: domain.ChangeID("01HX")})
+	m2 := m.WithCurrentView(tui.ViewApplyBoard)
+	if m2.CurrentView() != tui.ViewApplyBoard {
+		t.Errorf("after WithCurrentView(ApplyBoard): %v", m2.CurrentView())
+	}
+	if m.CurrentView() != tui.ViewTimeline {
+		t.Error("WithCurrentView mutated the receiver")
+	}
+}
+
+func TestModelApprovalGateMsgSetsBannerGate(t *testing.T) {
+	m := tui.NewModel(tui.ModelConfig{ChangeID: domain.ChangeID("01HX")})
+	gate := domain.ApprovalGate{
+		URL:    "https://gov.local/approvals/abc",
+		Reason: "policy",
+		Risk:   "medium",
+		Phase:  domain.PhaseApply,
+	}
+	m2 := m.WithBannerGate(&gate)
+
+	got := m2.BannerGate()
+	if got == nil {
+		t.Fatal("BannerGate is nil after WithBannerGate")
+	}
+	if got.URL != "https://gov.local/approvals/abc" {
+		t.Errorf("URL = %q", got.URL)
+	}
+}
+
+func TestModelApplyEventApprovalRequiredSetsBannerGate(t *testing.T) {
+	m := tui.NewModel(tui.ModelConfig{ChangeID: domain.ChangeID("01HX")})
+	m2 := m.ApplyEvent(domain.Event{
+		Type: "approval.required",
+		Payload: map[string]any{
+			"phase":     string(domain.PhaseApply),
+			"gate_url":  "https://gov.local/x",
+			"reason":    "policy says no apply without tasks approved",
+			"risk":      "medium",
+			"policy":    "require_approval",
+			"change_id": "01HX",
+		},
+		TraceID: "trace-1",
+	})
+	gate := m2.BannerGate()
+	if gate == nil {
+		t.Fatal("approval.required should set BannerGate")
+	}
+	if gate.URL != "https://gov.local/x" {
+		t.Errorf("URL = %q", gate.URL)
+	}
+	if gate.Risk != "medium" {
+		t.Errorf("Risk = %q", gate.Risk)
+	}
+	if gate.Phase != domain.PhaseApply {
+		t.Errorf("Phase = %q", gate.Phase)
+	}
+	if gate.TraceID != "trace-1" {
+		t.Errorf("TraceID = %q", gate.TraceID)
+	}
+}
+
+func TestModelApplyEventApprovalResolvedClearsBanner(t *testing.T) {
+	m := tui.NewModel(tui.ModelConfig{ChangeID: domain.ChangeID("01HX")}).
+		WithBannerGate(&domain.ApprovalGate{URL: "https://x", Phase: domain.PhaseApply})
+	m2 := m.ApplyEvent(domain.Event{
+		Type: "approval.resolved",
+		Payload: map[string]any{
+			"decision":    "approved",
+			"resolved_by": "alice",
+		},
+	})
+	if m2.BannerGate() != nil {
+		t.Errorf("approval.resolved should clear banner; got %+v", m2.BannerGate())
+	}
+}
+
+func TestModelApplyEventForwardProgressClearsBanner(t *testing.T) {
+	m := tui.NewModel(tui.ModelConfig{ChangeID: domain.ChangeID("01HX")}).
+		WithBannerGate(&domain.ApprovalGate{Phase: domain.PhaseApply})
+	m2 := m.ApplyEvent(domain.Event{
+		Type:    "phase.started",
+		Payload: map[string]any{"phase_type": string(domain.PhaseVerify)},
+	})
+	if m2.BannerGate() != nil {
+		t.Error("phase.started for verify should clear apply-banner (forward progress)")
+	}
+}
+
+func TestModelApplyEventSamePhaseDoesNotClearBanner(t *testing.T) {
+	m := tui.NewModel(tui.ModelConfig{ChangeID: domain.ChangeID("01HX")}).
+		WithBannerGate(&domain.ApprovalGate{Phase: domain.PhaseApply})
+	m2 := m.ApplyEvent(domain.Event{
+		Type:    "phase.started",
+		Payload: map[string]any{"phase_type": string(domain.PhaseApply)},
+	})
+	if m2.BannerGate() == nil {
+		t.Error("phase.started for the SAME phase must not clear banner")
+	}
+}
+
+func TestModelApplyEventEarlierPhaseDoesNotClearBanner(t *testing.T) {
+	m := tui.NewModel(tui.ModelConfig{ChangeID: domain.ChangeID("01HX")}).
+		WithBannerGate(&domain.ApprovalGate{Phase: domain.PhaseApply})
+	m2 := m.ApplyEvent(domain.Event{
+		Type:    "phase.started",
+		Payload: map[string]any{"phase_type": string(domain.PhaseExplore)},
+	})
+	if m2.BannerGate() == nil {
+		t.Error("phase.started for an earlier phase must not clear banner")
+	}
+}
+
+func TestModelApplySnapshotPastPhaseClearsBanner(t *testing.T) {
+	m := tui.NewModel(tui.ModelConfig{ChangeID: domain.ChangeID("01HX")}).
+		WithBannerGate(&domain.ApprovalGate{Phase: domain.PhaseApply})
+	m2 := m.ApplySnapshot(&domain.Change{
+		ID:             domain.ChangeID("01HX"),
+		Status:         domain.ChangeStatusRunning,
+		CurrentPhaseID: "p-verify",
+		Phases: []domain.Phase{
+			{ID: "p-verify", Type: domain.PhaseVerify, Status: domain.PhaseStatusRunning},
+		},
+	})
+	if m2.BannerGate() != nil {
+		t.Error("snapshot showing forward-progress phase should clear banner")
+	}
+}
+
+func TestModelApplySnapshotSamePhaseKeepsBanner(t *testing.T) {
+	m := tui.NewModel(tui.ModelConfig{ChangeID: domain.ChangeID("01HX")}).
+		WithBannerGate(&domain.ApprovalGate{Phase: domain.PhaseApply})
+	m2 := m.ApplySnapshot(&domain.Change{
+		ID:             domain.ChangeID("01HX"),
+		Status:         domain.ChangeStatusRunning,
+		CurrentPhaseID: "p-apply",
+		Phases: []domain.Phase{
+			{ID: "p-apply", Type: domain.PhaseApply, Status: domain.PhaseStatusRunning},
+		},
+	})
+	if m2.BannerGate() == nil {
+		t.Error("snapshot still on the gated phase should keep banner")
+	}
+}
+
+func TestModelApplyEventTaskStartedFeedsApplyBoard(t *testing.T) {
+	m := tui.NewModel(tui.ModelConfig{ChangeID: domain.ChangeID("01HX")})
+	m2 := m.ApplyEvent(domain.Event{
+		Type: "task.started",
+		Payload: map[string]any{
+			"group_id":      "g1",
+			"task_id":       "t1",
+			"files_pattern": "internal/**",
+		},
+	})
+	if m2.ApplyBoard().GroupCount() != 1 {
+		t.Error("task.started should feed ApplyBoard")
+	}
+}
+
+func TestModelApplyEventAgentSpawnedFeedsApplyBoard(t *testing.T) {
+	m := tui.NewModel(tui.ModelConfig{ChangeID: domain.ChangeID("01HX")}).
+		ApplyEvent(domain.Event{Type: "task.started", Payload: map[string]any{"group_id": "g1", "task_id": "t1"}}).
+		ApplyEvent(domain.Event{Type: "agent.spawned", Payload: map[string]any{"agent_id": "a1", "agent_role": "team_lead", "group_id": "g1", "task_id": "t1"}})
+
+	board := m.ApplyBoard()
+	if len(board.Groups()) != 1 {
+		t.Fatal("groups missing")
+	}
+	task := board.Groups()[0].Tasks[0]
+	if len(task.Agents) != 1 || task.Agents[0].Role != "team_lead" {
+		t.Errorf("agent missing or wrong: %+v", task.Agents)
+	}
+}

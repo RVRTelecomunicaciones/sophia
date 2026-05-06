@@ -3,6 +3,7 @@ package cli_test
 import (
 	"bytes"
 	"context"
+	"errors"
 	"strings"
 	"testing"
 
@@ -185,5 +186,90 @@ func TestRunCommandReturnsExitErrorOnFailure(t *testing.T) {
 	err := c.Execute()
 	if err == nil {
 		t.Fatal("expected error")
+	}
+}
+
+func TestRunCommandApprovalTimeoutInvalidDurationFails(t *testing.T) {
+	deps, _, _ := newRunDeps(t, &bytes.Buffer{})
+	c := cli.NewRoot(deps)
+	c.SetOut(&bytes.Buffer{})
+	c.SetErr(&bytes.Buffer{})
+	c.SetArgs([]string{"run", "msg", "--no-tui", "--json", "--approval-timeout=banana"})
+	err := c.Execute()
+	if err == nil {
+		t.Fatal("expected error for invalid --approval-timeout")
+	}
+	if !strings.Contains(err.Error(), "approval-timeout") {
+		t.Errorf("error should mention approval-timeout: %v", err)
+	}
+}
+
+func TestRunCommandApprovalTimeoutFiresInJSONLMode(t *testing.T) {
+	t.Setenv(application.EnvOrchestratorURL, "")
+	t.Setenv(application.EnvProject, "")
+	t.Setenv(application.EnvBaseRef, "")
+	var sinkBuf bytes.Buffer
+	deps, orch, stream := newRunDeps(t, &sinkBuf)
+
+	stream.OnSubscribe = func(target outbound.StreamTarget) {
+		go func() {
+			stream.Push(target, domain.Event{
+				Type: "approval.required",
+				Payload: map[string]any{
+					"phase":    "apply",
+					"gate_url": "https://x",
+					"risk":     "medium",
+				},
+			})
+			// Never resolve, never close — timer should fire.
+		}()
+	}
+
+	c := cli.NewRoot(deps)
+	c.SetOut(&bytes.Buffer{})
+	c.SetErr(&bytes.Buffer{})
+	c.SetArgs([]string{"run", "msg", "--no-tui", "--json", "--approval-timeout=200ms"})
+	err := c.Execute()
+	if err == nil {
+		t.Fatal("expected approval-timeout to fire with exit code 5")
+	}
+	var exit *application.ExitError
+	if !errors.As(err, &exit) {
+		t.Fatalf("error not *ExitError: %v", err)
+	}
+	if exit.Code != 5 {
+		t.Errorf("ExitError.Code = %d, want 5", exit.Code)
+	}
+	_ = orch
+}
+
+func TestRunCommandApprovalTimeoutCanceledByResolveEvent(t *testing.T) {
+	t.Setenv(application.EnvOrchestratorURL, "")
+	t.Setenv(application.EnvProject, "")
+	t.Setenv(application.EnvBaseRef, "")
+	var sinkBuf bytes.Buffer
+	deps, orch, stream := newRunDeps(t, &sinkBuf)
+
+	stream.OnSubscribe = func(target outbound.StreamTarget) {
+		go func() {
+			stream.Push(target, domain.Event{
+				Type: "approval.required",
+				Payload: map[string]any{"phase": "apply", "gate_url": "https://x"},
+			})
+			stream.Push(target, domain.Event{
+				Type: "approval.resolved",
+				Payload: map[string]any{"decision": "approved"},
+			})
+			orch.SetTerminal(target.ChangeID, domain.ChangeStatusDone)
+			stream.Close(target)
+		}()
+	}
+
+	c := cli.NewRoot(deps)
+	c.SetOut(&bytes.Buffer{})
+	c.SetArgs([]string{"run", "msg", "--no-tui", "--json", "--approval-timeout=5s"})
+	err := c.Execute()
+	if err != nil {
+		t.Fatalf("expected success when approval resolves before timeout: %v", err)
 	}
 }

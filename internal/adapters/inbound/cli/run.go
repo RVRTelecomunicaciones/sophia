@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/spf13/cobra"
 
@@ -18,11 +19,12 @@ import (
 
 func newRunCmd(d Deps) *cobra.Command {
 	var (
-		noTUI         bool
-		jsonOut       bool
-		baseRef       string
-		artifactStore string
-		project       string
+		noTUI               bool
+		jsonOut             bool
+		baseRef             string
+		artifactStore       string
+		project             string
+		approvalTimeoutStr  string
 	)
 	cmd := &cobra.Command{
 		Use:   "run [message]",
@@ -53,6 +55,11 @@ func newRunCmd(d Deps) *cobra.Command {
 				return err
 			}
 
+			approvalTimeout, err := time.ParseDuration(approvalTimeoutStr)
+			if err != nil {
+				return fmt.Errorf("run: --approval-timeout: %w", err)
+			}
+
 			input := application.RunInput{
 				Project:       resolved.Project,
 				Message:       args[0],
@@ -61,7 +68,7 @@ func newRunCmd(d Deps) *cobra.Command {
 			}
 
 			if noTUI {
-				return runJSONL(cmd.Context(), d, input)
+				return runJSONL(cmd.Context(), d, input, approvalTimeout)
 			}
 			return runTUI(cmd.Context(), d, input)
 		},
@@ -71,6 +78,8 @@ func newRunCmd(d Deps) *cobra.Command {
 	cmd.Flags().StringVar(&baseRef, "base-ref", "", "override base_ref")
 	cmd.Flags().StringVar(&artifactStore, "artifact-store", "", "override artifact_store mode")
 	cmd.Flags().StringVar(&project, "project", "", "override project slug")
+	cmd.Flags().StringVar(&approvalTimeoutStr, "approval-timeout", "30m",
+		"max wait for an approval gate before exit code 5 (--no-tui only)")
 	return cmd
 }
 
@@ -84,10 +93,23 @@ func validateModeFlags(noTUI, jsonOut bool) error {
 	return nil
 }
 
-func runJSONL(ctx context.Context, d Deps, input application.RunInput) error {
-	sink := chooseJSONSink(d)
-	runner := d.RunnerFactory(sink)
+func runJSONL(parentCtx context.Context, d Deps, input application.RunInput, approvalTimeout time.Duration) error {
+	innerSink := chooseJSONSink(d)
+
+	ctx, cancel := context.WithCancel(parentCtx)
+	defer cancel()
+
+	wrapped := newApprovalTimeoutSink(innerSink, approvalTimeout, cancel)
+	runner := d.RunnerFactory(wrapped)
+
 	res, err := runner.Run(ctx, input)
+	_ = res
+
+	// If the timer fired, Wait returns errApprovalTimeout. Map to ExitError{5}.
+	if waitErr := wrapped.Wait(); waitErr != nil {
+		return &application.ExitError{Code: 5, Err: waitErr}
+	}
+
 	if err != nil {
 		var exit *application.ExitError
 		if errors.As(err, &exit) {
@@ -95,7 +117,6 @@ func runJSONL(ctx context.Context, d Deps, input application.RunInput) error {
 		}
 		return err
 	}
-	_ = res
 	return nil
 }
 

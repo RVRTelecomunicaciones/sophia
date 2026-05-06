@@ -282,3 +282,30 @@ func TestRunnerInputRequiresProjectAndMessage(t *testing.T) {
 		t.Error("expected error on empty project")
 	}
 }
+
+// Regression: when ctx is canceled mid-run, the sink must learn about it via
+// OnError before the runner returns. We use a sink that records errors and
+// verify OnError fired even though ctx is canceled.
+func TestRunnerCancellationFiresOnError(t *testing.T) {
+	orch := fakes.NewFakeOrchestrator()
+	stream := fakes.NewFakeEventStream()
+	sink := &recordingSink{}
+	r, _ := newRunner(orch, stream, sink)
+
+	stream.OnSubscribe = func(_ outbound.StreamTarget) {
+		// Never push, never close — ctx cancel will end us.
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	go func() {
+		time.Sleep(20 * time.Millisecond)
+		cancel()
+	}()
+
+	_, _ = r.Run(ctx, application.RunInput{
+		Project: "p", Message: "msg", BaseRef: "main", ArtifactStore: domain.ArtifactStoreEngram,
+	})
+	if len(sink.Errors) == 0 {
+		t.Error("expected OnError to fire on ctx cancellation")
+	}
+}

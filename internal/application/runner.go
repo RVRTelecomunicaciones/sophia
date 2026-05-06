@@ -106,10 +106,11 @@ func (r *Runner) Run(ctx context.Context, in RunInput) (RunResult, error) {
 		ArtifactStoreMode: string(in.ArtifactStore),
 	})
 	if err != nil {
-		_ = r.deps.Sink.OnError(ctx, err)
 		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+			_ = r.deps.Sink.OnError(context.WithoutCancel(ctx), err)
 			return RunResult{}, &ExitError{Code: 4, Err: err}
 		}
+		_ = r.deps.Sink.OnError(ctx, err)
 		return RunResult{}, &ExitError{Code: 3, Err: err}
 	}
 
@@ -128,6 +129,7 @@ func (r *Runner) Run(ctx context.Context, in RunInput) (RunResult, error) {
 	final, err := r.stream(ctx, created.ID)
 	if err != nil {
 		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+			_ = r.deps.Sink.OnError(context.WithoutCancel(ctx), err)
 			return res, &ExitError{Code: 4, Err: err}
 		}
 		_ = r.deps.Sink.OnError(ctx, err)
@@ -163,6 +165,7 @@ func (r *Runner) stream(ctx context.Context, id domain.ChangeID) (domain.ChangeS
 // dispatchEvent forwards a single event to the sink. Heartbeats are dropped
 // (defensive — the SSE client also filters them). Approval events get
 // translated into OnApprovalGate AND emitted via OnEvent (D-M5-02).
+// OnEvent always fires first; OnApprovalGate follows for approval.required.
 func (r *Runner) dispatchEvent(ctx context.Context, ev domain.Event) {
 	if ev.Type == "heartbeat" {
 		return

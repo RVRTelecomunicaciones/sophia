@@ -53,9 +53,14 @@ func (s *FakeEventStream) Subscribe(_ context.Context, target outbound.StreamTar
 }
 
 func (s *FakeEventStream) Push(target outbound.StreamTarget, ev domain.Event) {
+	// Snapshot subscribers under the lock; send outside so a full-buffer
+	// receiver can't deadlock the rest of the fake (Close/Subscribe/cancel
+	// also acquire mu).
 	s.mu.Lock()
-	defer s.mu.Unlock()
-	for _, ch := range s.subscribers[key(target)] {
+	subs := make([]chan domain.Event, len(s.subscribers[key(target)]))
+	copy(subs, s.subscribers[key(target)])
+	s.mu.Unlock()
+	for _, ch := range subs {
 		ch <- ev
 	}
 }

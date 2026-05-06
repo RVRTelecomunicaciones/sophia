@@ -15,6 +15,10 @@ const (
 	DefaultOrchestratorURL = "http://localhost:9080"
 	DefaultBaseRef         = "main"
 	DefaultTimeoutSeconds  = 30
+
+	EnvOrchestratorURL = "SOPHIA_ORCHESTRATOR_URL"
+	EnvProject         = "SOPHIA_PROJECT"
+	EnvBaseRef         = "SOPHIA_BASE_REF"
 )
 
 // ResolverFlags carries CLI flag values. Empty strings/zero ints mean "not set".
@@ -101,13 +105,13 @@ func (r *ConfigResolver) Resolve(ctx context.Context, in ResolverInput) (Resolve
 	}
 
 	// Env vars.
-	if v := in.Env["SOPHIA_ORCHESTRATOR_URL"]; v != "" {
+	if v := in.Env[EnvOrchestratorURL]; v != "" {
 		out.OrchestratorURL = v
 	}
-	if v := in.Env["SOPHIA_PROJECT"]; v != "" {
+	if v := in.Env[EnvProject]; v != "" {
 		out.Project = v
 	}
-	if v := in.Env["SOPHIA_BASE_REF"]; v != "" {
+	if v := in.Env[EnvBaseRef]; v != "" {
 		out.BaseRef = v
 	}
 
@@ -122,7 +126,12 @@ func (r *ConfigResolver) Resolve(ctx context.Context, in ResolverInput) (Resolve
 		out.BaseRef = in.Flags.BaseRef
 	}
 	if in.Flags.ArtifactStore != "" {
-		out.ArtifactStore = domain.ArtifactStoreMode(in.Flags.ArtifactStore)
+		mode := domain.ArtifactStoreMode(in.Flags.ArtifactStore)
+		if !mode.IsValid() {
+			return out, fmt.Errorf("%w: artifact-store %q is not one of engram|openspec|hybrid|none",
+				domain.ErrConfigMissing, in.Flags.ArtifactStore)
+		}
+		out.ArtifactStore = mode
 	}
 	if in.Flags.TimeoutSeconds > 0 {
 		out.TimeoutSeconds = in.Flags.TimeoutSeconds

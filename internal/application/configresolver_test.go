@@ -124,3 +124,27 @@ func TestResolverInvalidProjectYAMLBubblesUp(t *testing.T) {
 		t.Errorf("expected ErrInvalidYAML, got %v", err)
 	}
 }
+
+func TestResolverInvalidUserYAMLBubblesUp(t *testing.T) {
+	r, _, uc, _ := newResolver()
+	uc.ReadErr = domain.ErrInvalidYAML
+	_, err := r.Resolve(context.Background(), application.ResolverInput{
+		UserConfigPath: "/cfg/config.yaml",
+	})
+	if !errors.Is(err, domain.ErrInvalidYAML) {
+		t.Errorf("expected ErrInvalidYAML, got %v", err)
+	}
+}
+
+func TestResolverRejectsInvalidArtifactStoreFlag(t *testing.T) {
+	r, _, _, _ := newResolver()
+	_, err := r.Resolve(context.Background(), application.ResolverInput{
+		Flags: application.ResolverFlags{ArtifactStore: "weird"},
+	})
+	if err == nil {
+		t.Fatal("expected error on invalid artifact-store")
+	}
+	if !errors.Is(err, domain.ErrConfigMissing) {
+		t.Errorf("expected ErrConfigMissing, got %v", err)
+	}
+}

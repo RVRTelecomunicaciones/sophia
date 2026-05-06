@@ -2,6 +2,8 @@ module github.com/RVRTelecomunicaciones/sophia-cli
 
 go 1.25.0
 
+toolchain go1.26.2
+
 require (
 	github.com/spf13/afero v1.15.0
 	github.com/spf13/cobra v1.10.2

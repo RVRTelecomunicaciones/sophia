@@ -256,7 +256,6 @@ func (p *Program) Snapshot() Model {
 	return p.state
 }
 
-
 // reattachHint returns the user-facing reattach instruction printed AFTER
 // the bubbletea program exits. Spec §2.2.
 func reattachHint(id domain.ChangeID) string {

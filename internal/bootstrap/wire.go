@@ -11,10 +11,10 @@ import (
 
 	"github.com/RVRTelecomunicaciones/sophia-cli/internal/adapters/inbound/cli"
 	"github.com/RVRTelecomunicaciones/sophia-cli/internal/adapters/outbound/composeexec"
-	"github.com/RVRTelecomunicaciones/sophia-cli/internal/adapters/outbound/osbrowser"
 	"github.com/RVRTelecomunicaciones/sophia-cli/internal/adapters/outbound/filestate"
 	"github.com/RVRTelecomunicaciones/sophia-cli/internal/adapters/outbound/gitcli"
 	"github.com/RVRTelecomunicaciones/sophia-cli/internal/adapters/outbound/orchestratorhttp"
+	"github.com/RVRTelecomunicaciones/sophia-cli/internal/adapters/outbound/osbrowser"
 	"github.com/RVRTelecomunicaciones/sophia-cli/internal/adapters/outbound/sseprobe"
 	"github.com/RVRTelecomunicaciones/sophia-cli/internal/adapters/outbound/ssestream"
 	"github.com/RVRTelecomunicaciones/sophia-cli/internal/adapters/outbound/xdgpaths"

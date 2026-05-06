@@ -253,11 +253,11 @@ func TestRunCommandApprovalTimeoutCanceledByResolveEvent(t *testing.T) {
 	stream.OnSubscribe = func(target outbound.StreamTarget) {
 		go func() {
 			stream.Push(target, domain.Event{
-				Type: "approval.required",
+				Type:    "approval.required",
 				Payload: map[string]any{"phase": "apply", "gate_url": "https://x"},
 			})
 			stream.Push(target, domain.Event{
-				Type: "approval.resolved",
+				Type:    "approval.resolved",
 				Payload: map[string]any{"decision": "approved"},
 			})
 			orch.SetTerminal(target.ChangeID, domain.ChangeStatusDone)

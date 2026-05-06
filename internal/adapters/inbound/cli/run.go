@@ -19,12 +19,12 @@ import (
 
 func newRunCmd(d Deps) *cobra.Command {
 	var (
-		noTUI               bool
-		jsonOut             bool
-		baseRef             string
-		artifactStore       string
-		project             string
-		approvalTimeoutStr  string
+		noTUI              bool
+		jsonOut            bool
+		baseRef            string
+		artifactStore      string
+		project            string
+		approvalTimeoutStr string
 	)
 	cmd := &cobra.Command{
 		Use:   "run [message]",

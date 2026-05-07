@@ -1,10 +1,12 @@
 # 0003 — Cross-repo wire alignment with `sophia-orchestator`
 
-- **Status:** Draft (pending decision A1 / A2 / A3)
+- **Status:** Accepted (2026-05-07)
+- **Decision:** Path A3 — canonical spec, both repos converge. A1 retained as fallback if cross-repo coordination becomes infeasible mid-flight; A2 rejected.
 - **Date:** 2026-05-07
-- **Deciders:** sophia-cli + sophia-orchestator owners
+- **Deciders:** sophia-cli + sophia-orchestator owners (single architectural owner; sign-off recorded in M10 plan pre-execution gate as "Authorized 2026-05-07")
 - **Supersedes:** none
-- **Related:** ADR-0001 (hexagonal layering), `docs/release/manual-smoke-checklist.md` v0.1.0 sign-off note
+- **Related:** ADR-0001 (hexagonal layering), `docs/specs/sophia-wire-v1.md` (the canonical contract this ADR mandates), `docs/superpowers/plans/2026-05-07-sophia-m10-wire-alignment-v0.2.0.md` (M10 implementation plan with D-M10-01..17), `docs/release/manual-smoke-checklist.md` v0.1.0 sign-off note (the trigger that surfaced the drift)
+- **Implementation tracking:** M10 / v0.2.0 plan, 7 phases. Phase 1 Task 1.1 (canonical spec authoring) and Task 1.2 (cross-repo mirror) completed 2026-05-07; Task 1.3 (this promotion) completes Phase 1.
 
 ## Context
 
@@ -41,10 +43,19 @@ A complete inventory was produced in M10 Task 1 (see Appendix A below).
 indicating that the CLI never grew the surface needed to drive the
 orchestrator's first-class operations.
 
-## Decision (PENDING)
+## Decision (ACCEPTED — Path A3)
 
-Three candidate paths. The owner decision is the trigger for the M10
-implementation plan (Task 4).
+**Adopted:** Path A3 (canonical spec, both repos converge).
+**Fallback:** Path A1 retained if cross-repo coordination becomes infeasible mid-flight.
+**Rejected:** Path A2 (orchestrator-side compat shims) — generates dual-API debt; security smell from a `dev-mode` toggle.
+
+The canonical wire spec is `docs/specs/sophia-wire-v1.md` (authoritative copy in sophia-cli, byte-for-byte mirror in sophia-orchestator, SHA256-gated by CI). All wire concerns described in Section "Summary of the gap" below are resolved by the spec; the implementation work to align both repos to the spec is the M10 plan.
+
+The original options (A1/A2/A3) and their tradeoff matrix are preserved below for historical context.
+
+## Original options analysis
+
+Three candidate paths originally considered. The owner decision was the trigger for the M10 implementation plan (Task 4).
 
 ### Path A1 — sophia-cli adopts the orchestrator's wire protocol
 

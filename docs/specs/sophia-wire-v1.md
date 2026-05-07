@@ -711,3 +711,58 @@ part of v1:
 | Version | Date | Author | Note |
 |---------|------|--------|------|
 | 0.1 (draft) | 2026-05-07 | repository architect | First canonical draft. Authored from M9 inventory (`docs/superpowers/research/m10-wire-inventory.md`) + ADR-0003 + D-M10-01..17. Awaiting Phase 1 Task 1.2 (mirror) and Task 1.3 (ADR promotion). |
+| 0.1.1 (cross-reviewed) | 2026-05-07 | repository architect | Phase 1 Task 1.1 Step 2 complete: every endpoint in `m10-wire-inventory.md` is either covered, explicitly migrated, or explicitly excluded. See Appendix C. |
+
+## Appendix C — Inventory cross-review (Phase 1 Task 1.1 Step 2)
+
+Full mapping from `docs/superpowers/research/m10-wire-inventory.md` to
+this spec. Two columns: inventory entry → spec disposition.
+
+### Inventory: sophia-cli outbound calls (6 entries)
+
+| # | Inventory entry | Spec disposition |
+|---|-----------------|------------------|
+| 1 | CLI calls `GET /api/v1/healthz` | **MIGRATED** — Section 4.1 canonical is `/api/v1/health`. CLI changes per D-M10-06 / Phase 4 Task 4.1. |
+| 2 | CLI calls `POST /api/v1/changes` (no auth) | **COVERED** — Section 4.2; spec adds required `X-Sophia-API-Key` per D-M10-02 (CLI changes per Phase 4 Task 4.2). |
+| 3 | CLI calls `GET /api/v1/changes/{id}` (no auth) | **COVERED** — Section 4.2; auth header added. |
+| 4 | CLI calls `GET /api/v1/changes?...` (no auth) | **COVERED** — Section 4.2 + Section 7 pagination; auth header added. |
+| 5 | CLI calls `GET /api/v1/changes/{id}/events` (no auth) | **MIGRATED** — Section 4.3 + 5.4 phase-stream multiplexer per D-M10-05. New URL `/api/v1/phases/{phase_id}/events`. CLI replaces per Phase 4 Task 4.3. |
+| 6 | CLI calls `GET /api/v1/events` (sseprobe) | **EXPLICITLY EXCLUDED** — D-M10-07. CLI removes `sseprobe` per Phase 4 Task 4.7. |
+
+### Inventory: sophia-orchestator inbound routes (14 entries)
+
+| # | Inventory entry | Spec disposition |
+|---|-----------------|------------------|
+| 1 | `HealthHandler.Check` GET `/api/v1/health` | **COVERED** — Section 4.1, no change. |
+| 2 | `HealthHandler.Ready` GET `/api/v1/ready` | **COVERED** — Section 4.1, no change. |
+| 3 | metrics GET `/metrics` | **EXPLICITLY EXCLUDED FROM CLI CONTRACT** — Section 4.5; orchestrator MAY expose, CLI doesn't call. |
+| 4 | `ChangesHandler.Create` POST `/api/v1/changes` | **COVERED** — Section 4.2, no path change. |
+| 5 | `ChangesHandler.List` GET `/api/v1/changes` | **COVERED** — Section 4.2 + Section 7. |
+| 6 | `ChangesHandler.Get` GET `/api/v1/changes/{change_id}` | **COVERED** — Section 4.2. |
+| 7 | `ChangesHandler.Abort` POST `/api/v1/changes/{change_id}/abort` | **COVERED** — Section 4.2. |
+| 8 | `PhasesHandler.Run` POST `/api/v1/changes/{change_id}/phases/{phase_type}/run` | **COVERED** — Section 4.3, intentionally unsupported by CLI. Path retained (change-id needed because phase doesn't yet exist). |
+| 9 | `PhasesHandler.Get` GET `/api/v1/changes/{change_id}/phases/{phase_id}` | **MIGRATED** — Section 4.3 phase-scoped form `/api/v1/phases/{phase_id}` per D-M10-13. Orchestrator changes per Phase 3 Task 3.1. |
+| 10 | `PhasesHandler.Resume` POST `/api/v1/changes/{change_id}/phases/{phase_id}/resume` | **MIGRATED** — `/api/v1/phases/{phase_id}/resume`. |
+| 11 | `PhasesHandler.Approve` POST `/api/v1/changes/{change_id}/phases/{phase_id}/approve` | **MIGRATED** — `/api/v1/phases/{phase_id}/approve`. |
+| 12 | `PhasesHandler.Reject` POST `/api/v1/changes/{change_id}/phases/{phase_id}/reject` | **MIGRATED** — `/api/v1/phases/{phase_id}/reject`. |
+| 13 | `ApplyHandler.GetBoard` GET `/api/v1/changes/{change_id}/phases/{phase_id}/board` | **MIGRATED** — `/api/v1/phases/{phase_id}/board`. |
+| 14 | `SSEHandler.Stream` GET `/api/v1/changes/{change_id}/phases/{phase_id}/events` | **MIGRATED** — `/api/v1/phases/{phase_id}/events`. |
+
+### Net delta summary
+
+- **CLI breaking changes:** 1 path rename (`/healthz` → `/health`),
+  1 SSE model rewrite (per-Change → per-Phase multiplexer), 1 endpoint
+  removed (`sseprobe`/`/api/v1/events`), auth header added globally.
+- **Orchestrator breaking changes:** 5 path migrations from
+  change-scoped to phase-scoped (`get`, `resume`, `approve`, `reject`,
+  `board`, `events`). The change-scoped path `POST /changes/{cid}/phases/{type}/run`
+  retained (change-id is the parent identifier when the phase is
+  being created).
+- **Both:** auth header is mandatory on the new authenticated
+  endpoints; loopback-anonymous path is the only escape hatch
+  (Section 3.2).
+
+No inventoried endpoint is left undocumented. No design-level concern
+from the inventory's "Mismatches" table (M-marked or D-marked) is
+unaddressed in the spec. Phase 1 Task 1.1 Step 2 is therefore
+complete; Step 3 (owner sign-off) is the next gate.

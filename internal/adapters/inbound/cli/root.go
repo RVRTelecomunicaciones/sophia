@@ -22,6 +22,8 @@ type Deps struct {
 	Initializer  *application.Initializer
 	StatusReader *application.StatusReader
 	Lister       *application.Lister
+	Approver     *application.Approver
+	Aborter      *application.Aborter
 	Resolver     *application.ConfigResolver
 
 	// Orch is the raw OrchestratorClient. Required by Task 6's
@@ -77,6 +79,12 @@ state.`,
 	root.AddCommand(newAttachCmd(d))
 	root.AddCommand(newStatusCmd(d))
 	root.AddCommand(newChangesCmd(d))
+	// v0.2.0 (Phase 4 Task 4.4-4.6): in-band approval / rejection /
+	// abort commands. The browser flow is unchanged; these commands are
+	// additive (D-M10-03).
+	root.AddCommand(newApproveCmd(d))
+	root.AddCommand(newRejectCmd(d))
+	root.AddCommand(newAbortCmd(d))
 
 	return root
 }

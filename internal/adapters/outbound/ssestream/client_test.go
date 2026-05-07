@@ -28,7 +28,7 @@ func TestClientSubscribeReceivesEvents(t *testing.T) {
 	c := ssestream.New(ssestream.Config{BaseURL: srv.URL})
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
-	ch, stop, err := c.Subscribe(ctx, outbound.StreamTarget{ChangeID: domain.ChangeID("01HX")}, outbound.SubscribeOptions{})
+	ch, stop, err := c.Subscribe(ctx, outbound.StreamTarget{ChangeID: domain.ChangeID("01HX"), PhaseID: "01PHASEXXXXXXXXXXXXXXXXXXX"}, outbound.SubscribeOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -74,7 +74,7 @@ func TestClientSendsLastEventIDOnReconnect(t *testing.T) {
 	})
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
-	ch, stop, err := c.Subscribe(ctx, outbound.StreamTarget{ChangeID: domain.ChangeID("01HX")}, outbound.SubscribeOptions{})
+	ch, stop, err := c.Subscribe(ctx, outbound.StreamTarget{ChangeID: domain.ChangeID("01HX"), PhaseID: "01PHASEXXXXXXXXXXXXXXXXXXX"}, outbound.SubscribeOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -106,7 +106,7 @@ func TestClientHonorsInitialLastEventID(t *testing.T) {
 	c := ssestream.New(ssestream.Config{BaseURL: srv.URL})
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
-	ch, stop, err := c.Subscribe(ctx, outbound.StreamTarget{ChangeID: domain.ChangeID("01HX")}, outbound.SubscribeOptions{LastEventID: "evt-prior"})
+	ch, stop, err := c.Subscribe(ctx, outbound.StreamTarget{ChangeID: domain.ChangeID("01HX"), PhaseID: "01PHASEXXXXXXXXXXXXXXXXXXX"}, outbound.SubscribeOptions{LastEventID: "evt-prior"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -130,7 +130,7 @@ func TestClientSkipsHeartbeatsButRecordsLiveness(t *testing.T) {
 	c := ssestream.New(ssestream.Config{BaseURL: srv.URL})
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
-	ch, stop, err := c.Subscribe(ctx, outbound.StreamTarget{ChangeID: domain.ChangeID("01HX")}, outbound.SubscribeOptions{})
+	ch, stop, err := c.Subscribe(ctx, outbound.StreamTarget{ChangeID: domain.ChangeID("01HX"), PhaseID: "01PHASEXXXXXXXXXXXXXXXXXXX"}, outbound.SubscribeOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -157,7 +157,7 @@ func TestClientGivesUpAfterRetryBudgetExhausted(t *testing.T) {
 	})
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
-	ch, stop, err := c.Subscribe(ctx, outbound.StreamTarget{ChangeID: domain.ChangeID("01HX")}, outbound.SubscribeOptions{})
+	ch, stop, err := c.Subscribe(ctx, outbound.StreamTarget{ChangeID: domain.ChangeID("01HX"), PhaseID: "01PHASEXXXXXXXXXXXXXXXXXXX"}, outbound.SubscribeOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}

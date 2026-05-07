@@ -70,7 +70,7 @@ func TestSSEReconnectRecoversFromBlip(t *testing.T) {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	ch, stop, err := c.Subscribe(ctx, outbound.StreamTarget{ChangeID: domain.ChangeID("01HX")}, outbound.SubscribeOptions{})
+	ch, stop, err := c.Subscribe(ctx, outbound.StreamTarget{ChangeID: domain.ChangeID("01HX"), PhaseID: "01PHASEXXXXXXXXXXXXXXXXXXX"}, outbound.SubscribeOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -118,7 +118,7 @@ func TestSSESkipsHeartbeatsAndForwardsRest(t *testing.T) {
 	})
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
-	ch, stop, err := c.Subscribe(ctx, outbound.StreamTarget{ChangeID: domain.ChangeID("01HX")}, outbound.SubscribeOptions{})
+	ch, stop, err := c.Subscribe(ctx, outbound.StreamTarget{ChangeID: domain.ChangeID("01HX"), PhaseID: "01PHASEXXXXXXXXXXXXXXXXXXX"}, outbound.SubscribeOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}

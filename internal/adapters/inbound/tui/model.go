@@ -218,13 +218,17 @@ func (m Model) ApplySnapshot(c *domain.Change) Model {
 
 // ApplyEvent integrates a single domain.Event into the model.
 //
-// The set of event types it understands grew in M7:
+// The set of event types it understands grew in M7 and Phase 4 / M10:
 //
-//   - phase.started, phase.completed       — Timeline phase transitions
+//   - phase.started, phase.completed, phase.failed — Timeline phase transitions
 //   - approval.required                    — sets bannerGate AND marks phase row
 //   - approval.resolved                    — clears bannerGate (M7)
 //   - task.started, task.completed         — feeds ApplyBoard (M7)
-//   - agent.spawned, agent.completed       — feeds ApplyBoard (M7)
+//   - agent.spawned (legacy) / agent.dispatched (canonical, sophia-wire-v1) — feeds ApplyBoard
+//   - agent.completed                      — feeds ApplyBoard
+//   - apply.* (Optional, diagnostic)       — Phase 1.5 amendment: tolerated, no-op
+//   - open                                 — sophia-wire-v1 §5.3 open event: no-op
+//   - heartbeat                            — already filtered by Runner; no-op here
 //
 // Side-effect on banner clearing:
 //   - phase.started for any phase whose ordinal is STRICTLY GREATER than
@@ -235,7 +239,7 @@ func (m Model) ApplyEvent(ev domain.Event) Model {
 		m = m.applyPhaseStarted(ev)
 		m = m.maybeClearBannerOnForwardProgress(ev)
 		return m
-	case "phase.completed":
+	case "phase.completed", "phase.failed", "phase.completed_with_concerns", "phase.needs_context":
 		return m.applyPhaseCompleted(ev)
 	case "approval.required":
 		m = m.applyApprovalRequired(ev)
@@ -244,10 +248,14 @@ func (m Model) ApplyEvent(ev domain.Event) Model {
 	case "approval.resolved":
 		m.bannerGate = nil
 		return m
-	case "task.started", "task.completed", "agent.spawned", "agent.completed":
+	case "task.started", "task.completed", "agent.spawned", "agent.dispatched", "agent.completed":
 		m.applyBoard = m.applyBoard.ApplyEvent(ev)
 		return m
 	default:
+		// Unknown event types (e.g. orch-internal extensions, future
+		// `apply.*` diagnostics — Phase 1.5 amendment) are tolerated:
+		// the Timeline / ApplyBoard remain unchanged. This is the
+		// forward-compat policy from sophia-wire-v1 §10.
 		return m
 	}
 }

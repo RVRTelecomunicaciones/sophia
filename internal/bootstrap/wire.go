@@ -1,6 +1,7 @@
 package bootstrap
 
 import (
+	"fmt"
 	"io"
 	"log/slog"
 	"os"
@@ -15,7 +16,6 @@ import (
 	"github.com/RVRTelecomunicaciones/sophia/internal/adapters/outbound/gitcli"
 	"github.com/RVRTelecomunicaciones/sophia/internal/adapters/outbound/orchestratorhttp"
 	"github.com/RVRTelecomunicaciones/sophia/internal/adapters/outbound/osbrowser"
-	"github.com/RVRTelecomunicaciones/sophia/internal/adapters/outbound/sseprobe"
 	"github.com/RVRTelecomunicaciones/sophia/internal/adapters/outbound/ssestream"
 	"github.com/RVRTelecomunicaciones/sophia/internal/adapters/outbound/xdgpaths"
 	"github.com/RVRTelecomunicaciones/sophia/internal/adapters/outbound/yamlconfig"
@@ -32,17 +32,31 @@ type Config struct {
 	LogWriter       io.Writer  // nil ⇒ os.Stderr
 	LogLevel        slog.Level // default Info
 	OrchestratorURL string     // empty ⇒ DefaultOrchestratorURL
+	// APIKey overrides SOPHIA_API_KEY. Tests inject a programmable
+	// resolver via APIKeyResolverOverride below; production leaves this
+	// empty and lets New() read the env var.
+	APIKey string
+	// APIKeyResolverOverride lets tests inject a fully-built resolver
+	// (e.g. backed by a non-os.Getenv source) without the binary picking
+	// up the test process's real $SOPHIA_API_KEY. Production must leave
+	// this nil.
+	APIKeyResolverOverride *application.APIKeyResolver
 }
 
 // New is the composition root. It builds concrete outbound adapters,
 // application services, and returns the configured root cobra command.
+//
+// API key plumbing (Phase 4 Task 4.2 / D-M10-02): the persistent
+// --api-key flag is registered on the root command but its value isn't
+// known until cobra runs ParseFlags. To keep the wiring deterministic
+// the flag is resolved at command-execution time via PersistentPreRunE,
+// not at bootstrap. SOPHIA_API_KEY env var IS read at bootstrap so
+// header-bearing adapters can be built once.
 func New(cfg Config) (*cobra.Command, error) {
 	if cfg.LogWriter == nil {
 		cfg.LogWriter = os.Stderr
 	}
 	if cfg.OrchestratorURL == "" {
-		// SOPHIA_ORCHESTRATOR_URL takes effect at bootstrap; --orchestrator-url
-		// arrives in M5 once the orch client supports per-call rebinding.
 		if v := os.Getenv(application.EnvOrchestratorURL); v != "" {
 			cfg.OrchestratorURL = v
 		} else {
@@ -52,14 +66,22 @@ func New(cfg Config) (*cobra.Command, error) {
 	logger := NewLogger(cfg.LogWriter, cfg.LogLevel)
 	slog.SetDefault(logger)
 
+	keyResolver := cfg.APIKeyResolverOverride
+	if keyResolver == nil {
+		keyResolver = application.NewAPIKeyResolver(cfg.APIKey, os.Getenv)
+	}
+	apiKey := keyResolver.Resolve()
+
 	compose := composeexec.New(composeexec.Config{})
 	git := gitcli.New(gitcli.Config{})
 	paths := xdgpaths.New(xdgpaths.Config{})
-	orch := orchestratorhttp.New(orchestratorhttp.Config{BaseURL: cfg.OrchestratorURL})
-	sse := sseprobe.New(sseprobe.Config{BaseURL: cfg.OrchestratorURL})
+	orch := orchestratorhttp.New(orchestratorhttp.Config{
+		BaseURL: cfg.OrchestratorURL,
+		APIKey:  apiKey,
+	})
 
 	doctor := application.NewDoctorService(application.DoctorDeps{
-		Compose: compose, Git: git, Paths: paths, Orch: orch, SSE: sse,
+		Compose: compose, Git: git, Paths: paths, Orch: orch,
 	})
 	provisioner := application.NewProvisioner(application.ProvisionerDeps{
 		Compose: compose,
@@ -71,9 +93,6 @@ func New(cfg Config) (*cobra.Command, error) {
 		Embedded: composeexec.EmbeddedComposeYAML,
 	})
 
-	// Resolve XDG paths once for state-aware adapters. Errors here mean
-	// the binary still works for read-only commands; init/status will
-	// re-resolve and fail with a clearer message.
 	xdg, _ := paths.Resolve()
 
 	projectStore := yamlconfig.NewProjectStore(yamlconfig.ProjectConfig{})
@@ -96,19 +115,18 @@ func New(cfg Config) (*cobra.Command, error) {
 		Git:          git,
 	})
 
-	// SSE stream client (M5): consumes /api/v1/changes/{id}/events with
-	// reconnect, Last-Event-ID, and 60s heartbeat watchdog per spec §5.7.
+	// Per-phase SSE stream client (Phase 4 Task 4.3). The client carries
+	// the API key into every reconnect; key value is never logged.
 	stream := ssestream.New(ssestream.Config{
 		BaseURL:    cfg.OrchestratorURL,
 		Backoff:    ssestream.BackoffConfig{Min: time.Second, Max: 30 * time.Second},
 		MaxRetries: ssestream.DefaultMaxRetries,
 		Heartbeat:  ssestream.DefaultHeartbeat,
+		APIKey:     apiKey,
 	})
 
 	browser := osbrowser.New(osbrowser.Config{})
 
-	// RunnerFactory builds a Runner with the caller-provided sink. The sink is
-	// chosen at command time: TUI bridge in default mode, jsonsink in --no-tui --json mode.
 	runnerFactory := func(sink inbound.EventSink) *application.Runner {
 		return application.NewRunner(application.RunnerDeps{
 			Orch:        orch,
@@ -119,14 +137,10 @@ func New(cfg Config) (*cobra.Command, error) {
 		}, application.RunnerOptions{})
 	}
 
-	// Lister implements `sophia changes` (M8). Pure pass-through over
-	// OrchestratorClient.ListChanges; project-default resolution lives in
-	// cli/changes.go.
 	lister := application.NewLister(application.ListerDeps{Orch: orch})
+	approver := application.NewApprover(application.ApproverDeps{Orch: orch})
+	aborter := application.NewAborter(application.AborterDeps{Orch: orch})
 
-	// AttacherFactory mirrors RunnerFactory for `sophia attach` (M8). Each
-	// invocation gets its own Runner+Attacher pair so lifecycles stay
-	// isolated.
 	attacherFactory := func(sink inbound.EventSink) *application.Attacher {
 		runner := application.NewRunner(application.RunnerDeps{
 			Orch:        orch,
@@ -152,6 +166,8 @@ func New(cfg Config) (*cobra.Command, error) {
 		Initializer:     initializer,
 		StatusReader:    statusReader,
 		Lister:          lister,
+		Approver:        approver,
+		Aborter:         aborter,
 		Orch:            orch,
 		RunnerFactory:   runnerFactory,
 		AttacherFactory: attacherFactory,
@@ -162,5 +178,36 @@ func New(cfg Config) (*cobra.Command, error) {
 		Commit:          info.Commit,
 		BuildDate:       info.BuildDate,
 	}
-	return cli.NewRoot(deps), nil
+	root := cli.NewRoot(deps)
+
+	// Persistent --api-key flag (D-M10-02). Resolution + auth gate runs
+	// at command execution so subcommands that don't talk to the
+	// orchestrator (--help, version) can run without a key.
+	var apiKeyFlag string
+	root.PersistentFlags().StringVar(&apiKeyFlag, "api-key", "", "API key for remote orchestrator (overrides SOPHIA_API_KEY)")
+	root.PersistentPreRunE = func(cmd *cobra.Command, _ []string) error {
+		if !needsAuth(cmd) {
+			return nil
+		}
+		effectiveResolver := application.NewAPIKeyResolver(apiKeyFlag, os.Getenv)
+		if cfg.APIKeyResolverOverride != nil && apiKeyFlag == "" {
+			effectiveResolver = cfg.APIKeyResolverOverride
+		}
+		if err := effectiveResolver.Authorize(cfg.OrchestratorURL); err != nil {
+			return fmt.Errorf("auth: %w", err)
+		}
+		return nil
+	}
+	return root, nil
+}
+
+// needsAuth returns true for commands that talk to the orchestrator.
+// Local-only commands (version, doctor, init, start, stop) skip the
+// auth gate so they work without a key against any orchestrator URL.
+func needsAuth(cmd *cobra.Command) bool {
+	switch cmd.Name() {
+	case "version", "doctor", "init", "start", "stop", "help":
+		return false
+	}
+	return true
 }

@@ -64,7 +64,10 @@ func (s ApplyBoardState) ApplyEvent(ev domain.Event) ApplyBoardState {
 		return s.applyTaskStarted(ev)
 	case "task.completed":
 		return s.applyTaskCompleted(ev)
-	case "agent.spawned":
+	// agent.spawned (legacy) and agent.dispatched (sophia-wire-v1
+	// canonical, post-Phase-3.7) carry the same payload shape and are
+	// rendered identically — accept both for forward-compat.
+	case "agent.spawned", "agent.dispatched":
 		return s.applyAgentSpawned(ev)
 	case "agent.completed":
 		return s.applyAgentCompleted(ev)

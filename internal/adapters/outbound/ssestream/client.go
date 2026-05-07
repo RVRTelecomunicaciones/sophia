@@ -11,13 +11,17 @@ import (
 
 	sse "github.com/tmaxmax/go-sse"
 
+	"github.com/RVRTelecomunicaciones/sophia/pkg/contract"
+
 	"github.com/RVRTelecomunicaciones/sophia/internal/domain"
 	"github.com/RVRTelecomunicaciones/sophia/internal/ports/outbound"
 )
 
 // DefaultStreamPath is the URL template for the SSE event stream. The single
-// %s is replaced with the ChangeID string.
-const DefaultStreamPath = "/api/v1/changes/%s/events"
+// %s is replaced with the PhaseID string. sophia-wire-v1 §4.3 + D-M10-05:
+// canonical streams are phase-scoped; the change-scoped path was removed
+// in v0.2.0 in favor of the multiplexer wrapping per-phase subscriptions.
+const DefaultStreamPath = "/api/v1/phases/%s/events"
 
 // Config is the constructor input for Client.
 type Config struct {
@@ -41,6 +45,10 @@ type Config struct {
 	// Clock injects a time source; nil defaults to real wall-clock. Only
 	// useful in tests that control the watchdog.
 	Clock Clock
+	// APIKey is the X-Sophia-API-Key header value (sophia-wire-v1 §3.1).
+	// Empty key = anonymous; bootstrap MUST only allow this when the
+	// orchestrator URL is loopback (D-M10-02). MUST NOT be logged.
+	APIKey string
 }
 
 // Client implements outbound.EventStreamClient by connecting to the
@@ -60,6 +68,7 @@ type Client struct {
 	maxRetries int
 	heartbeat  time.Duration
 	clock      Clock
+	apiKey     string
 }
 
 // New constructs a Client from cfg. All zero fields get sensible defaults.
@@ -94,21 +103,26 @@ func New(cfg Config) *Client {
 		maxRetries: cfg.MaxRetries,
 		heartbeat:  heartbeat,
 		clock:      clk,
+		apiKey:     cfg.APIKey,
 	}
 }
 
 // Subscribe implements outbound.EventStreamClient.
-// It starts a background goroutine that connects to the SSE stream for
-// target.ChangeID, translates events, and emits them on the returned channel.
+// It starts a background goroutine that connects to the per-phase SSE
+// stream identified by target.PhaseID (sophia-wire-v1 §4.3 / D-M10-05),
+// translates events, and emits them on the returned channel.
 // The channel is closed when:
 //   - The caller cancels ctx
 //   - The retry budget is exhausted
 //   - An auth error (401/403) is received
+//   - The orchestrator returns 410 phase_terminal_no_events — the
+//     phase is already terminal and no further events will be emitted;
+//     the caller MUST fall back to GET /api/v1/phases/{id} for state.
 //
 // The returned stop function cancels the stream and returns nil.
 func (c *Client) Subscribe(ctx context.Context, target outbound.StreamTarget, opts outbound.SubscribeOptions) (<-chan domain.Event, func() error, error) {
-	if target.ChangeID.IsZero() {
-		return nil, nil, errors.New("ssestream: target.ChangeID required")
+	if target.PhaseID == "" {
+		return nil, nil, errors.New("ssestream: target.PhaseID required")
 	}
 	url := c.buildURL(target)
 
@@ -157,6 +171,13 @@ func (c *Client) run(ctx context.Context, url, initialLastID string, out chan<- 
 		if errors.Is(err, errAuthAbort) {
 			return
 		}
+		// 410 phase_terminal_no_events: stop immediately. Reconnecting
+		// would just 410 again until the retry budget exhausted; the
+		// caller's stream-end-then-snapshot path handles terminal phase
+		// state via GET /api/v1/phases/{id}.
+		if errors.Is(err, ErrPhaseTerminal) {
+			return
+		}
 		if !budget.TryUse() {
 			return
 		}
@@ -172,6 +193,13 @@ func (c *Client) run(ctx context.Context, url, initialLastID string, out chan<- 
 // errAuthAbort is returned by connectOnce when the server replies 401/403.
 // The outer loop treats this as a permanent failure.
 var errAuthAbort = errors.New("ssestream: unauthorized")
+
+// ErrPhaseTerminal is surfaced by Subscribe (via the stream-end path)
+// when the orchestrator returns 410 phase_terminal_no_events
+// (sophia-wire-v1 §9.2). The caller MUST fetch the phase snapshot via
+// GET /api/v1/phases/{id} for terminal state — no further events are
+// coming.
+var ErrPhaseTerminal = errors.New("ssestream: phase terminal — no further events")
 
 // connectOnce performs a single connection attempt using go-sse, with its
 // internal retry disabled (Backoff.MaxRetries: -1). The outer run loop owns
@@ -202,6 +230,12 @@ func (c *Client) connectOnce(
 	req.Header.Set("Cache-Control", "no-cache")
 	if lastID != "" {
 		req.Header.Set("Last-Event-ID", lastID)
+	}
+	// X-Sophia-API-Key per sophia-wire-v1 §3.1. Empty key omits the
+	// header (anonymous; orchestrator MUST be loopback per D-M10-02).
+	// The key value is NEVER logged.
+	if c.apiKey != "" {
+		req.Header.Set(contract.HeaderAPIKey, c.apiKey)
 	}
 
 	// Use a go-sse Client with MaxRetries: -1 so Connect() returns after a
@@ -262,23 +296,30 @@ func classifyConnectErr(err error) error {
 		return err
 	}
 	// go-sse wraps validator errors in *sse.ConnectionError. Scope the
-	// substring check to the inner validator error for stability if go-sse
-	// changes its outer wrapping format.
+	// substring check to the inner validator error for stability if
+	// go-sse changes its outer wrapping format. Status 410 is the
+	// phase_terminal_no_events signal (sophia-wire-v1 §9.2) — surface
+	// it as a typed error so the runner can fall back to a snapshot.
 	var connErr *sse.ConnectionError
 	if errors.As(err, &connErr) && connErr.Err != nil {
 		msg := connErr.Err.Error()
-		if strings.Contains(msg, "401") || strings.Contains(msg, "403") {
+		switch {
+		case strings.Contains(msg, "401"), strings.Contains(msg, "403"):
 			return errAuthAbort
+		case strings.Contains(msg, "410"):
+			return ErrPhaseTerminal
 		}
 	}
 	return err
 }
 
-// buildURL constructs the full URL for the given target.
+// buildURL constructs the full URL for the given target. The path
+// template's single %s is substituted with target.PhaseID per the
+// per-phase stream model (sophia-wire-v1 §4.3 / D-M10-05).
 func (c *Client) buildURL(target outbound.StreamTarget) string {
 	path := c.path
 	if strings.Contains(path, "%s") {
-		path = fmt.Sprintf(path, target.ChangeID.String())
+		path = fmt.Sprintf(path, target.PhaseID)
 	}
 	return c.base + path
 }

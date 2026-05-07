@@ -14,10 +14,16 @@ type FakeOrchestrator struct {
 	HealthzErr          error
 	CreateErr           error
 	ListErr             error
+	AbortErr            error
+	ApproveErr          error
+	RejectErr           error
 	GetBlockUntilCancel bool
 	TickHook            func(*domain.Change)
 	OnListChanges       func(outbound.ListChangesFilter)
 	OnGetChange         func(domain.ChangeID)
+	OnAbort             func(domain.ChangeID, outbound.AbortChangeInput)
+	OnApprove           func(string, outbound.ApprovalDecisionInput)
+	OnReject            func(string, outbound.ApprovalDecisionInput)
 	changes             map[domain.ChangeID]*domain.Change
 	nextID              int
 }
@@ -29,6 +35,12 @@ func NewFakeOrchestrator() *FakeOrchestrator {
 func (f *FakeOrchestrator) SeedChange(c *domain.Change) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	// Backfill a default current_phase_id for non-terminal seeds so
+	// runner/attacher tests that haven't been Phase-4-aware still
+	// produce a usable target for the multiplexer (D-M10-05).
+	if c.CurrentPhaseID == "" && !c.Status.IsTerminal() {
+		c.CurrentPhaseID = string(c.ID) + "-phase"
+	}
 	f.changes[c.ID] = c
 }
 
@@ -44,6 +56,11 @@ func (f *FakeOrchestrator) CreateChange(_ context.Context, in outbound.CreateCha
 	}
 	f.nextID++
 	id := domain.ChangeID(fmt.Sprintf("fake-change-%d", f.nextID))
+	// Per-Phase-4 multiplexer (D-M10-05) requires a current_phase_id
+	// for non-terminal changes. The fake mirrors the orchestrator's
+	// "init phase auto-start" behavior so the runner can subscribe
+	// immediately. Tests that need a phase-less change can clear the
+	// field via SeedChange after Create.
 	c := &domain.Change{
 		ID:                id,
 		Name:              in.Name,
@@ -51,6 +68,7 @@ func (f *FakeOrchestrator) CreateChange(_ context.Context, in outbound.CreateCha
 		BaseRef:           in.BaseRef,
 		ArtifactStoreMode: in.ArtifactStoreMode,
 		Status:            domain.ChangeStatusPending,
+		CurrentPhaseID:    fmt.Sprintf("fake-phase-%d", f.nextID),
 	}
 	f.changes[id] = c
 	return c, nil
@@ -93,6 +111,38 @@ func (f *FakeOrchestrator) SetTerminal(id domain.ChangeID, st domain.ChangeStatu
 	if c, ok := f.changes[id]; ok {
 		c.Status = st
 	}
+}
+
+// MutateChange applies fn to the stored Change atomically. Phase 4
+// multiplexer tests use it to flip current_phase_id between
+// subscriptions to simulate phase advancement.
+func (f *FakeOrchestrator) MutateChange(id domain.ChangeID, fn func(*domain.Change)) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if c, ok := f.changes[id]; ok {
+		fn(c)
+	}
+}
+
+func (f *FakeOrchestrator) AbortChange(_ context.Context, id domain.ChangeID, in outbound.AbortChangeInput) error {
+	if f.OnAbort != nil {
+		f.OnAbort(id, in)
+	}
+	return f.AbortErr
+}
+
+func (f *FakeOrchestrator) ApprovePhase(_ context.Context, phaseID string, in outbound.ApprovalDecisionInput) error {
+	if f.OnApprove != nil {
+		f.OnApprove(phaseID, in)
+	}
+	return f.ApproveErr
+}
+
+func (f *FakeOrchestrator) RejectPhase(_ context.Context, phaseID string, in outbound.ApprovalDecisionInput) error {
+	if f.OnReject != nil {
+		f.OnReject(phaseID, in)
+	}
+	return f.RejectErr
 }
 
 func (f *FakeOrchestrator) ListChanges(_ context.Context, filter outbound.ListChangesFilter) ([]*domain.Change, error) {

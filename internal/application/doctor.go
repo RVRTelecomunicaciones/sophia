@@ -48,14 +48,19 @@ type DiagnosticsReport struct {
 var ErrPathInvalid = errors.New("xdg path invalid")
 
 // DoctorDeps groups the outbound ports the doctor service uses. Optional
-// dependencies (e.g. Orch, SSE, Paths) may be nil — the corresponding check
+// dependencies (e.g. Orch, Paths) may be nil — the corresponding check
 // is then reported as info ("not configured") rather than fail.
+//
+// Note (Phase 4 Task 4.7 / D-M10-07): the legacy SSEProber dependency
+// was removed. Pre-run probing called `/api/v1/events`, an endpoint the
+// orchestrator never implemented, so the green check was misleading.
+// SSE handshake is now deferred to the first `sophia run`/`attach`
+// (where a real phase ID exists) and surfaces there if it fails.
 type DoctorDeps struct {
 	Compose outbound.ComposeRunner
 	Git     outbound.GitInspector
 	Paths   outbound.PathResolver
 	Orch    outbound.OrchestratorClient
-	SSE     outbound.SSEProber
 }
 
 // DoctorService orchestrates the M2 subset of doctor checks: docker, compose,
@@ -76,7 +81,7 @@ func (d *DoctorService) Run(ctx context.Context) DiagnosticsReport {
 		d.checkGit(ctx),
 		d.checkPaths(),
 		d.checkOrchestrator(ctx),
-		d.checkSSE(ctx),
+		d.checkSSEDeferred(),
 	}
 	summary := DiagnosticsSummary{}
 	for _, c := range checks {
@@ -151,14 +156,17 @@ func (d *DoctorService) checkOrchestrator(ctx context.Context) Check {
 	return Check{ID: "orchestrator", Title: "Orchestrator reachable", Level: LevelOK, Detail: "200 OK"}
 }
 
-func (d *DoctorService) checkSSE(ctx context.Context) Check {
-	if d.deps.SSE == nil {
-		return Check{ID: "sse", Title: "SSE handshake", Level: LevelInfo, Detail: "no prober wired"}
+// checkSSEDeferred replaces the legacy SSE handshake probe (Phase 4
+// Task 4.7 / D-M10-07). The pre-run probe targeted an endpoint the
+// orchestrator never implemented; deferring to first stream-attempt
+// avoids a misleading green check.
+func (d *DoctorService) checkSSEDeferred() Check {
+	return Check{
+		ID:     "sse",
+		Title:  "SSE handshake",
+		Level:  LevelInfo,
+		Detail: "deferred to first run/attach (no orchestrator-side endpoint to probe pre-run)",
 	}
-	if err := d.deps.SSE.Probe(ctx); err != nil {
-		return Check{ID: "sse", Title: "SSE handshake", Level: LevelWarn, Detail: err.Error()}
-	}
-	return Check{ID: "sse", Title: "SSE handshake", Level: LevelOK, Detail: "event-stream OK"}
 }
 
 func isComposeV2(version string) bool {

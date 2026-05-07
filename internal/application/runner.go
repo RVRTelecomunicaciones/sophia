@@ -157,28 +157,108 @@ func (r *Runner) Observe(ctx context.Context, res RunResult, sink inbound.EventS
 	return r.finishWithSink(ctx, res, final, sink)
 }
 
-// streamWithSink subscribes to the SSE feed for id and forwards events to the
-// given sink until the channel closes (either graceful server close or retry
-// budget exhausted) or ctx is canceled. After the channel closes, it refreshes
-// the change snapshot to determine terminal status.
+// streamWithSink drives the per-Change observation loop. It is the
+// phase-stream multiplexer (Phase 4 Task 4.3 / D-M10-05): the SSE
+// transport is per-phase, but the Change moves through phases over its
+// lifetime. The multiplexer:
+//
+//  1. fetches the Change snapshot to learn current_phase_id;
+//  2. subscribes to /api/v1/phases/{current_phase_id}/events;
+//  3. forwards events to the sink until the stream ends;
+//  4. refreshes the snapshot;
+//  5. if the Change is terminal → finish;
+//  6. if current_phase_id changed → re-subscribe to the new phase
+//     (loop back to step 3);
+//  7. if it didn't change but the change is non-terminal → bail out
+//     with a "stream ended before terminal" error.
+//
+// 410 phase_terminal_no_events from the orchestrator (sophia-wire-v1
+// §9.2) is observed as a closed channel; the snapshot path then drives
+// the next decision (advance to a new phase, or finish).
 func (r *Runner) streamWithSink(ctx context.Context, id domain.ChangeID, sink inbound.EventSink) (domain.ChangeStatus, error) {
-	ch, stop, err := r.deps.EventStream.Subscribe(ctx, outbound.StreamTarget{ChangeID: id}, outbound.SubscribeOptions{})
-	if err != nil {
-		return "", fmt.Errorf("subscribe: %w", err)
-	}
-	defer stop() //nolint:errcheck
-
+	currentPhase := ""
 	for {
-		select {
-		case <-ctx.Done():
-			return "", ctx.Err()
-		case ev, ok := <-ch:
-			if !ok {
-				return r.refreshAfterStreamEndWithSink(ctx, id, sink)
-			}
-			r.dispatchEventWithSink(ctx, ev, sink)
+		if err := ctx.Err(); err != nil {
+			return "", err
 		}
+
+		// Resolve the phase to subscribe to. On the first iteration we
+		// fetch a fresh snapshot; on subsequent iterations the previous
+		// snapshot decision (below) already updated currentPhase.
+		if currentPhase == "" {
+			snap, err := r.snapshotChange(ctx, id)
+			if err != nil {
+				return "", err
+			}
+			if err := sink.OnSnapshot(ctx, snap); err != nil {
+				_ = sink.OnError(ctx, err)
+			}
+			if snap.Status.IsTerminal() {
+				return snap.Status, nil
+			}
+			if snap.CurrentPhaseID == "" {
+				return "", fmt.Errorf("snapshot has no current_phase_id (status=%q)", snap.Status)
+			}
+			currentPhase = snap.CurrentPhaseID
+		}
+
+		ch, stop, err := r.deps.EventStream.Subscribe(ctx, outbound.StreamTarget{
+			ChangeID: id, PhaseID: currentPhase,
+		}, outbound.SubscribeOptions{})
+		if err != nil {
+			return "", fmt.Errorf("subscribe: %w", err)
+		}
+
+		// Drain events until the channel closes or ctx ends.
+		streamLoop := func() error {
+			for {
+				select {
+				case <-ctx.Done():
+					return ctx.Err()
+				case ev, ok := <-ch:
+					if !ok {
+						return nil // stream ended; outer loop refreshes
+					}
+					r.dispatchEventWithSink(ctx, ev, sink)
+				}
+			}
+		}
+		err = streamLoop()
+		_ = stop()
+		if err != nil {
+			return "", err
+		}
+
+		// Stream ended → snapshot to decide: terminal? phase advanced?
+		snap, snapErr := r.snapshotChange(ctx, id)
+		if snapErr != nil {
+			return "", snapErr
+		}
+		if err := sink.OnSnapshot(ctx, snap); err != nil {
+			_ = sink.OnError(ctx, err)
+		}
+		if snap.Status.IsTerminal() {
+			return snap.Status, nil
+		}
+		if snap.CurrentPhaseID != "" && snap.CurrentPhaseID != currentPhase {
+			currentPhase = snap.CurrentPhaseID
+			continue
+		}
+		return "", fmt.Errorf("stream ended before terminal status (current=%q)", snap.Status)
 	}
+}
+
+// snapshotChange wraps a bounded GetChange call. Uses
+// SnapshotRefreshTimeout so a hung orchestrator doesn't block the
+// multiplexer indefinitely between phases.
+func (r *Runner) snapshotChange(ctx context.Context, id domain.ChangeID) (*domain.Change, error) {
+	rctx, cancel := context.WithTimeout(ctx, r.opts.SnapshotRefreshTimeout)
+	defer cancel()
+	snap, err := r.deps.Orch.GetChange(rctx, id)
+	if err != nil {
+		return nil, fmt.Errorf("snapshot: %w", err)
+	}
+	return snap, nil
 }
 
 // dispatchEventWithSink forwards a single event to the given sink. Heartbeats
@@ -220,15 +300,15 @@ func approvalGateFromEvent(ev domain.Event) domain.ApprovalGate {
 	return gate
 }
 
-// refreshAfterStreamEndWithSink issues a final GetChange to determine terminal
-// status and forwards the snapshot to the given sink. Per D-M5-03 this is the
-// only place mid-run snapshots happen — not on every reconnect.
+// refreshAfterStreamEndWithSink issues a final GetChange to determine
+// terminal status. Pre-Phase-4 this was the only mid-run snapshot path;
+// the multiplexer now performs the same work inline at every phase
+// boundary. Kept for backward compatibility with the Observe() API
+// surface in case future callers want a one-shot probe.
 func (r *Runner) refreshAfterStreamEndWithSink(ctx context.Context, id domain.ChangeID, sink inbound.EventSink) (domain.ChangeStatus, error) {
-	rctx, cancel := context.WithTimeout(ctx, r.opts.SnapshotRefreshTimeout)
-	defer cancel()
-	snap, err := r.deps.Orch.GetChange(rctx, id)
+	snap, err := r.snapshotChange(ctx, id)
 	if err != nil {
-		return "", fmt.Errorf("post-stream snapshot: %w", err)
+		return "", err
 	}
 	if err := sink.OnSnapshot(ctx, snap); err != nil {
 		_ = sink.OnError(ctx, err)

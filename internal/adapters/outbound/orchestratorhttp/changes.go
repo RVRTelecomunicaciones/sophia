@@ -34,6 +34,7 @@ func (c *Client) CreateChange(ctx context.Context, in outbound.CreateChangeInput
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "application/json")
+	c.applyAuth(req)
 
 	var resp ChangeResponse
 	if err := c.doJSON(req, &resp); err != nil {
@@ -53,6 +54,7 @@ func (c *Client) GetChange(ctx context.Context, id domain.ChangeID) (*domain.Cha
 		return nil, fmt.Errorf("build request: %w", err)
 	}
 	req.Header.Set("Accept", "application/json")
+	c.applyAuth(req)
 
 	var resp ChangeResponse
 	if err := c.doJSON(req, &resp); err != nil {
@@ -85,6 +87,7 @@ func (c *Client) ListChanges(ctx context.Context, f outbound.ListChangesFilter) 
 		return nil, fmt.Errorf("build request: %w", err)
 	}
 	req.Header.Set("Accept", "application/json")
+	c.applyAuth(req)
 
 	var resp ListChangesResponse
 	if err := c.doJSON(req, &resp); err != nil {
@@ -119,6 +122,29 @@ func (c *Client) doJSON(req *http.Request, out any) error {
 		if err := json.Unmarshal(body, out); err != nil {
 			return fmt.Errorf("decode body: %w", err)
 		}
+	}
+	return nil
+}
+
+// doNoContent executes req and discards the response body. Returns
+// a *StatusError on non-2xx (carrying the parsed envelope) and nil on
+// any 2xx, regardless of body. Used by abort/approve/reject which the
+// CLI fires-and-forgets.
+func (c *Client) doNoContent(req *http.Request) error {
+	resp, err := c.http.Do(req)
+	if err != nil {
+		return fmt.Errorf("request: %w", err)
+	}
+	defer resp.Body.Close()
+	body, err := io.ReadAll(io.LimitReader(resp.Body, maxBodySize+1))
+	if err != nil {
+		return fmt.Errorf("read body: %w", err)
+	}
+	if int64(len(body)) > maxBodySize {
+		return fmt.Errorf("response body exceeds %d bytes", maxBodySize)
+	}
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return NewStatusError(resp.StatusCode, body)
 	}
 	return nil
 }

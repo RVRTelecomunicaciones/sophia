@@ -18,7 +18,6 @@ func newDoctorDeps() cli.Deps {
 			Git:     fakes.NewFakeGitInspector(),
 			Paths:   fakes.NewFakePathResolver(),
 			Orch:    fakes.NewFakeOrchestrator(),
-			SSE:     fakes.NewFakeSSEProber(),
 		}),
 	}
 }

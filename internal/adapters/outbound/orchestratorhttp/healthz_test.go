@@ -18,7 +18,9 @@ func TestClientImplementsOrchestratorClient(t *testing.T) {
 
 func TestHealthzSucceedsOn200(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/api/v1/healthz" {
+		// sophia-wire-v1 §4.1 / D-M10-06: canonical path is
+		// /api/v1/health (NO /healthz alias).
+		if r.URL.Path != "/api/v1/health" {
 			t.Errorf("path = %q", r.URL.Path)
 		}
 		w.WriteHeader(http.StatusOK)

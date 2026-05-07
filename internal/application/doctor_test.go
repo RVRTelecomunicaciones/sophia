@@ -14,7 +14,6 @@ type doctorM2Deps struct {
 	Git     *fakes.FakeGitInspector
 	Paths   *fakes.FakePathResolver
 	Orch    *fakes.FakeOrchestrator
-	SSE     *fakes.FakeSSEProber
 }
 
 func newDoctorM2(opts ...func(*doctorM2Deps)) (*application.DoctorService, *doctorM2Deps) { //nolint:unparam // opts variadic matches the functional-options pattern used across all fake constructors
@@ -23,13 +22,12 @@ func newDoctorM2(opts ...func(*doctorM2Deps)) (*application.DoctorService, *doct
 		Git:     fakes.NewFakeGitInspector(),
 		Paths:   fakes.NewFakePathResolver(),
 		Orch:    fakes.NewFakeOrchestrator(),
-		SSE:     fakes.NewFakeSSEProber(),
 	}
 	for _, o := range opts {
 		o(d)
 	}
 	return application.NewDoctorService(application.DoctorDeps{
-		Compose: d.Compose, Git: d.Git, Paths: d.Paths, Orch: d.Orch, SSE: d.SSE,
+		Compose: d.Compose, Git: d.Git, Paths: d.Paths, Orch: d.Orch,
 	}), d
 }
 
@@ -98,14 +96,17 @@ func TestDoctorOrchestratorFail(t *testing.T) {
 	t.Errorf("expected orchestrator fail; got %+v", r.Checks)
 }
 
-func TestDoctorSSEWarnNotFail(t *testing.T) {
-	d, deps := newDoctorM2()
-	deps.SSE.ProbeErr = errors.New("no stream")
+// Phase 4 Task 4.7 / D-M10-07: SSE handshake is no longer probed
+// pre-run; the doctor reports it as info ("deferred to first
+// run/attach"). The legacy "fail-warn-on-probe-error" behavior is gone
+// because the probe endpoint never existed on the orchestrator.
+func TestDoctorSSEDeferredAsInfo(t *testing.T) {
+	d, _ := newDoctorM2()
 	r := d.Run(context.Background())
 	for _, c := range r.Checks {
 		if c.ID == "sse" {
-			if c.Level != application.LevelWarn {
-				t.Errorf("expected sse warn, got %q", c.Level)
+			if c.Level != application.LevelInfo {
+				t.Errorf("expected sse info, got %q", c.Level)
 			}
 			return
 		}

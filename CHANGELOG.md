@@ -7,7 +7,47 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-(empty — pending changes between `m8-attach-changes-status` and the next tag)
+(empty — first changes after the v0.1.0 cut land here)
+
+---
+
+## [v0.1.0] — 2026-05-07
+
+First publicly tagged release. Bundles the entire M1-M8 feature surface plus
+the M9 hardening + release infrastructure.
+
+### Added
+
+- **Release packaging** (M9): goreleaser v2 cross-platform builds (linux+darwin
+  × amd64+arm64), SHA256 checksums, GitHub Actions release workflow triggered
+  on `v*.*.*` tag push.
+- **Documentation** (M9): Apache-2.0 LICENSE, README quickstart, full
+  CHANGELOG covering M1-M8, ADR-0001 (hexagonal architecture), ADR-0002
+  (Bubble Tea v2 on `charm.land`).
+- **Security suite** (M9): `make vuln` (govulncheck reachable HIGH/CRITICAL
+  gate), `make security` (gosec HIGH gate), `make licenses` (THIRD_PARTY_LICENSES
+  inventory with go-licenses fallback for Go 1.26.x). CI runs all three.
+- **Release gates** (M9): manual smoke checklist at
+  `docs/release/manual-smoke-checklist.md`; security exception log at
+  `docs/release/security-notes.md`.
+- **Headless asciinema demo** at `assets/demo/sophia-quickstart.cast`.
+
+### Changed
+
+- CI workflow bumped to Go 1.26.x (matches `go.mod` toolchain).
+- `bubbletea/v2` and `lipgloss/v2` promoted from indirect to direct deps via
+  `go mod tidy` (they are imported directly by the TUI adapter).
+
+### Internal
+
+- `composeexec.writeFile0644` carries an inline `// #nosec G304,G306,G703 --`
+  annotation for the gosec false positive (path is composed from XDG dataRoot
+  + fixed filenames; 0o644 required for docker daemon uid mismatch).
+
+### Pre-existing milestone history
+
+The full M1-M8 milestone history below is preserved verbatim from the M9
+plan's CHANGELOG draft.
 
 ---
 

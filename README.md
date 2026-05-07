@@ -150,21 +150,29 @@ artifact_store: engram
 
 ## Demo
 
-An asciinema cast of the quickstart flow is planned for the v0.1.1 release —
-it requires a live orchestrator + `asciinema` recorded against a real terminal,
-neither of which were available at v0.1.0 cut. Track the asset in
-[issue #1](https://github.com/RVRTelecomunicaciones/sophia-cli/issues/1) (to
-be filed alongside v0.1.0) or generate one locally:
+A headless asciinema cast lives at
+[`assets/demo/sophia-quickstart.cast`](assets/demo/sophia-quickstart.cast). It
+shows the binary surface — `version`, `--help`, command-level help, empty
+`status`, exit-code mapping for an unreachable orchestrator. The full
+run → attach → done flow against a live orchestrator is a v0.1.1 deliverable.
+
+Local playback:
 
 ```bash
 brew install asciinema   # or: pipx install asciinema
-mkdir -p assets/demo
-asciinema rec assets/demo/sophia-quickstart.cast --idle-time-limit 1.5
-# … run: sophia doctor; sophia run "demo"; sophia changes; sophia status …
 asciinema play assets/demo/sophia-quickstart.cast
 ```
 
-Anti-secret scrub before sharing the cast (D-M9-16):
+To re-record after a binary change:
+
+```bash
+make build
+asciinema rec assets/demo/sophia-quickstart.cast \
+    -c "bash scripts/demo.sh" \
+    --idle-time-limit 1.0 --overwrite
+```
+
+Anti-secret scrub before sharing any cast (D-M9-16):
 
 ```bash
 rg -i -e 'token' -e 'secret' -e 'bearer' -e 'ghp_' -e 'AKIA' \

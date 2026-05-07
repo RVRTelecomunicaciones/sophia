@@ -34,6 +34,10 @@
 | D-M10-10 | Contract test home? | Live in `sophia-cli` under `test/contract/`. The orchestrator runs the same suite via Go test imports of a contract package published from sophia-cli's `pkg/contract/` (new). Avoids a third repo at v0.2.0 cost; revisit if pain emerges. |
 | D-M10-11 | Coordinated release? | rc1 tags simultaneously: `sophia-cli v0.2.0-rc.1` + `sophia-orchestator v0.2.0-rc.1` + `docs/specs/sophia-wire-v1.md` v1.0 within the same week. After 7 days of integration smoke, both promote to `v0.2.0` final on the same day. Spec re-tags with the same release. |
 | D-M10-12 | Deprecation policy for v0.1.0 wire? | The CLI v0.1.0 wire is **incompatible** with the orchestrator and never worked end-to-end against the real service. There's no production deployment to deprecate gracefully. v0.2.0 of CLI replaces v0.1.0 outright; users who pinned to v0.1.0 are advised in the migration guide to upgrade. NO server-side compatibility shim. |
+| D-M10-13 | Approval/reject endpoint shape? | **Two candidate forms**, decided in Phase 1 spec authoring based on whether governance carries its own gate IDs. **Preferred form A**: `POST /api/v1/phases/{phase_id}/approve` and `/reject` — uses phase as the authoritative unit; matches the per-phase SSE model (D-M10-05). **Alternative form B**: `POST /api/v1/approvals/{gate_id}/approve` and `/reject` — used IFF governance issues distinct gate IDs separable from phase IDs (e.g. multiple gates per phase). The orchestrator's CURRENT path `POST /changes/{cid}/phases/{pid}/approve` is **rejected** as canonical: it carries a redundant change-id (phase IDs are globally unique already), and the spec must minimize the URL surface. Form A is the default; form B is recorded in spec section "Open governance considerations" for v0.3.0+ if needed. |
+| D-M10-14 | `/health` vs `/ready` semantics | `GET /api/v1/health` = **process is up** (HTTP server responding). MUST always succeed if the binary is running, even if downstream deps (DB, governance, memory, runtime) are dead. **Hard gate** in `sophia doctor`: 200 → green check; non-200 → fail. `GET /api/v1/ready` = **dependencies are reachable + ready** (DB connectable, downstream services reachable). MAY return 503 transiently. **Warning/degraded** in `sophia doctor`: 200 → green; 503 → yellow check with `(orchestrator dependencies degraded)` annotation but doctor stays exit 0; absent endpoint → "ready endpoint not implemented; skipping". Doctor MUST NOT exit non-zero on `/ready` failure alone. |
+| D-M10-15 | Workspace-independence gate | Before tagging EITHER repo, run `GOWORK=off go test ./...` locally and in CI. Confirms the build does not silently depend on a `go.work` file in the developer's tree (which would NOT be present on a fresh clone or release runner). New `make test-no-workspace` target in both repos. CI gate added to `release.yml` pre-flight. Failure to pass blocks tag push (release blocker, see D-M10-16). |
+| D-M10-16 | Release blockers (v0.2.0 final tag must NOT push if any of these fail) | (1) `docs/specs/sophia-wire-v1.sha256` differs between sophia-cli and sophia-orchestator at the to-be-tagged commit. (2) `make contract` fails in either repo. (3) Cross-repo smoke (the 7-day window matrix from Task 7.2) has any unresolved RED entry. (4) sophia-cli v0.2.0 CHANGELOG does NOT carry an explicit "Compatibility" section stating the version is **incompatible with sophia-orchestator v0.1.x and earlier; requires sophia-orchestator v0.2.0+**. (5) `GOWORK=off go test ./...` fails in either repo (D-M10-15). All five gates are checked by Task 12.x.x.x of the M10 release flow before any tag push. |
 
 ---
 
@@ -180,13 +184,13 @@ Initial classification (subject to v0.2.0-rc adjustment):
 | `GET /api/v1/changes` | Required | `sophia changes` |
 | `GET /api/v1/changes/{id}` | Required | `sophia run`, `sophia attach`, `sophia status` |
 | `POST /api/v1/changes/{id}/abort` | Required | `sophia abort` (NEW in v0.2.0) |
-| `POST /changes/{id}/phases/{type}/run` | Intentionally unsupported | (orchestrator drives; CLI does not control phase boundaries) |
-| `GET /changes/{id}/phases/{pid}` | Required | `sophia run` / `attach` (multiplexer reads `current_phase_id`) |
-| `POST /changes/{id}/phases/{pid}/resume` | Optional | `sophia resume` (NEW, v0.2.0) — surfaces only on `--no-tui --json` mode |
-| `POST /changes/{id}/phases/{pid}/approve` | Required | `sophia approve` (NEW, v0.2.0) |
-| `POST /changes/{id}/phases/{pid}/reject` | Required | `sophia reject` (NEW, v0.2.0) |
-| `GET /changes/{id}/phases/{pid}/board` | Optional | TUI ApplyBoard data refresh — fall back to SSE-derived state if 404 |
-| `GET /changes/{id}/phases/{pid}/events` | Required | SSE multiplexer |
+| `POST /api/v1/changes/{id}/phases/{type}/run` | Intentionally unsupported | (orchestrator drives; CLI does not control phase boundaries) |
+| `GET /api/v1/phases/{phase_id}` | Required | `sophia run` / `attach` (multiplexer reads `current_phase_id`) — phase IDs are globally unique, no change-id required (D-M10-13) |
+| `POST /api/v1/phases/{phase_id}/resume` | Optional | `sophia resume` (NEW, v0.2.0) — surfaces only on `--no-tui --json` mode |
+| `POST /api/v1/phases/{phase_id}/approve` | Required | `sophia approve` (NEW, v0.2.0). Form A from D-M10-13. |
+| `POST /api/v1/phases/{phase_id}/reject` | Required | `sophia reject` (NEW, v0.2.0). Form A from D-M10-13. |
+| `GET /api/v1/phases/{phase_id}/board` | Optional | TUI ApplyBoard data refresh — fall back to SSE-derived state if 404 |
+| `GET /api/v1/phases/{phase_id}/events` | Required | SSE multiplexer (D-M10-05) |
 
 Each row in the final matrix carries a 1-2 sentence rationale citing the
 D-M10-* decision that pinned the class.
@@ -320,8 +324,18 @@ Justification: D-M10-07. The probe endpoint never existed on the orchestrator; r
 
 **Files (sophia-cli, NEW public package):**
 - Create: `pkg/contract/types.go` — request/response DTOs identical to the canonical wire spec. The package is the Go ↔ wire bridge.
-- Create: `pkg/contract/version.go` — `const Version = "v1"`; `func RequiredHeaders() http.Header { ... }` for the API key header builder.
+- Create: `pkg/contract/routes.go` — route name constants (`HealthPath = "/api/v1/health"`, etc.) so neither client nor server hand-types URLs.
+- Create: `pkg/contract/events.go` — SSE event type name constants (`EventApprovalRequired = "approval.required"`, etc.).
+- Create: `pkg/contract/version.go` — `const Version = "v1"`; `func RequiredHeaders(apiKey string) http.Header { ... }` for the API key header builder.
 - Create: `pkg/contract/test/harness.go` — utilities the contract test suite uses (HTTP client builder, SSE consumer, decode helpers).
+
+**STRICT scope rules for `pkg/contract/`** (per user constraint):
+
+- MUST NOT import `internal/` from sophia-cli (would defeat the purpose; internal types pollute the public surface).
+- MUST NOT import `application/`, `adapters/`, or `cli/` from sophia-cli.
+- MUST contain ONLY: DTOs (request/response shapes), constants (route paths, event names, error codes, header names, version), and test helpers (`pkg/contract/test/`).
+- MUST NOT depend on `bubbletea`, `cobra`, `pgx`, `chi`, or any framework-coupled package. Standard library + minor utility libs (e.g. `time`) only.
+- IF either repo's adoption surfaces a coupling that would force `pkg/contract/` to import internal types, **STOP** and migrate `pkg/contract/` to a new repo `sophia-contract` BEFORE tagging `v0.2.0-rc.1`. Tracked under RM10-02.
 
 The orchestrator imports these types via `go.mod` (Task 3.1).
 
@@ -351,7 +365,38 @@ Build tag: `//go:build contract`. Run via `make contract` (new target).
 
 The contract tests are byte-identical (same Go file, imported in both repos via the `pkg/contract/test` package).
 
-### Task 5.3: Pact-style golden file (optional, deferred to v0.2.1 if scope creeps)
+### Task 5.3: Auth-specific contract tests (D-M10-02 enforcement)
+
+**Files (sophia-cli):**
+- Add: `test/contract/auth_test.go` (also under `//go:build contract`)
+
+Six scenarios are MANDATORY pass-criteria of the contract suite:
+
+```go
+// 1. Localhost listener + AllowAnonLocalhost=true + no API key → 200.
+TestAuth_LoopbackAnonAllowed_When_AllowAnonLocalhost_True
+
+// 2. Localhost listener + AllowAnonLocalhost=false + no API key → 401.
+TestAuth_LoopbackAnonRejected_When_AllowAnonLocalhost_False
+
+// 3. Remote listener + no API key → 401.
+TestAuth_RemoteWithoutKey_Returns401
+
+// 4. Remote listener + invalid API key → 401.
+TestAuth_RemoteWithInvalidKey_Returns401
+
+// 5. Remote listener + valid API key → 200.
+TestAuth_RemoteWithValidKey_Returns200
+
+// 6. CLI side: when SOPHIA_API_KEY is set, every outbound request
+//    carries X-Sophia-API-Key with that value. (Inspect via httptest
+//    capture of headers.)
+TestCli_SophiaAPIKeyEnv_AddsXSophiaAPIKeyHeader
+```
+
+Each test cites D-M10-02 as the source-of-truth. Failures here block release per D-M10-16.
+
+### Task 5.4: Pact-style golden file (optional, deferred to v0.2.1 if scope creeps)
 
 A captured set of HTTP exchanges and SSE streams (golden files) that validates the spec without requiring a live server. Out of scope for v0.2.0 but slot into v0.2.1.
 
@@ -425,8 +470,22 @@ custom code calling `/api/v1/changes/{id}/events` breaks.
 
 ### Task 7.1: Pre-release rc tags (D-M10-11)
 
-Same week:
-- `sophia-cli`: `git tag v0.2.0-rc.1` + `git push origin v0.2.0-rc.1`. Triggers the existing `release.yml` (which matches `v*.*.*` glob — `v0.2.0-rc.1` is matched).
+Same week, AFTER all five release blockers (D-M10-16) are green in both repos:
+
+```bash
+# Pre-tag gate (run in BOTH repos):
+GOWORK=off go test ./...     # D-M10-15: workspace-independence
+make contract                # D-M10-16(2): contract suite green
+sha256sum docs/specs/sophia-wire-v1.md
+# compare with the checksum committed in docs/specs/sophia-wire-v1.sha256;
+# CI's "spec-checksum" job enforces this on every push to main.
+
+# Then tag:
+git tag v0.2.0-rc.1 -m "v0.2.0-rc.1 — wire alignment"
+git push origin v0.2.0-rc.1
+```
+
+- `sophia-cli`: triggers the existing `release.yml` (matches `v*.*.*` glob — `v0.2.0-rc.1` is matched).
 - `sophia-orchestator`: matching `v0.2.0-rc.1` tag.
 - `docs/specs/sophia-wire-v1.md` checksum: identical in both repos at this commit.
 
@@ -446,9 +505,25 @@ Findings filed as v0.2.0-rc.2/.3/etc until clean.
 
 ### Task 7.3: Final v0.2.0 tag
 
-Both repos:
-- `git tag v0.2.0 -m "v0.2.0 — wire alignment release"`
-- `git push origin main v0.2.0`
+Five release blockers (D-M10-16) MUST all be green:
+
+| # | Gate | How verified |
+|---|------|--------------|
+| 1 | Spec checksum identical across repos | `sha256sum docs/specs/sophia-wire-v1.md` matches `docs/specs/sophia-wire-v1.sha256` in BOTH repos at the to-be-tagged commit. CI job `spec-checksum`. |
+| 2 | `make contract` green | Both repos' CI on the to-be-tagged commit. |
+| 3 | Cross-repo smoke 7-day window | All bullets in Task 7.2 ticked, no RED entries, sign-off committed at `docs/release/manual-smoke-checklist.md` v0.2.0 edition. |
+| 4 | CHANGELOG "Compatibility" section in CLI | sophia-cli `CHANGELOG.md` `[v0.2.0]` section MUST contain a "Compatibility" subsection stating: *"v0.2.0 of sophia-cli is incompatible with sophia-orchestator v0.1.x and earlier. Requires sophia-orchestator v0.2.0 or later."* — exact text or stronger. CI grep enforces. |
+| 5 | `GOWORK=off go test ./...` green in BOTH repos | New `make test-no-workspace` target. CI gate. |
+
+If ANY block: STOP. Either fix it (preferred) or cycle to v0.2.0-rc.2 / .3 etc. NO force-tag, NO bypass. Mirrors D-M9-13 / D-M9-14 for v0.1.0.
+
+When all 5 green:
+
+```bash
+# Both repos, same calendar day:
+git tag v0.2.0 -m "v0.2.0 — wire alignment release"
+git push origin main v0.2.0
+```
 
 GitHub Releases auto-publish via `release.yml` (sophia-cli) and the
 orchestrator's release pipeline. Spec file's `Status:` flips to
@@ -495,9 +570,23 @@ orchestrator's release pipeline. Spec file's `Status:` flips to
 | Contract tests (cli) | `make contract` | every spec assertion passes against in-process orch | CI |
 | Contract tests (orch) | `make contract` | same suite, against orch's own in-process server | CI |
 | Manual smoke (extended) | `docs/release/manual-smoke-checklist.md` v0.2.0 edition | every box ticked + reviewer signature | manual at v0.2.0 tag |
+| Workspace independence | `GOWORK=off go test ./...` (D-M10-15) | exit 0 in both repos | local + CI pre-tag gate |
+| Auth contract tests | Task 5.3 six scenarios | exit 0 | CI |
+| Compatibility section | grep `v0.2.0.*Compatibility` in CHANGELOG | match found | CI |
+| Spec checksum match | `sha256sum docs/specs/sophia-wire-v1.md` vs `.sha256` (BOTH repos) | identical | CI on every push |
 | Coordinated release | tag matches `v0.2.0`, CHANGELOG promoted, both repos tagged within 24h | manual coordination | gh release pages |
 
 ---
+
+## Pre-execution gate
+
+This plan is **NOT yet executable**. Three prerequisites must be satisfied before Phase 1 Task 1.1 starts:
+
+1. **v0.1.0 closure confirmed.** No follow-up work pending on the v0.1.0 line that would conflict with M10's wire changes. v0.1.0 stays as published; any post-release issues route to a `v0.1.x` patch on a release branch — NOT into M10's main work.
+2. **Owner sign-off recorded.** Per D-M10-04, both repos are treated as same-owner. The user (architect) explicitly authorizes M10 execution.
+3. **Calendar window confirmed.** 2-3 weeks of focus available for: 1 week spec authoring + parallel Phase 3/4 implementation + 7-day rc smoke window. Slipping mid-flight risks invoking the A1 fallback.
+
+When all three are green, mark this section "Authorized YYYY-MM-DD" and proceed to Phase 1 Task 1.1.
 
 ## Implementation Notes — Deviations from Plan
 

@@ -53,6 +53,33 @@ the M9 hardening + release infrastructure.
   annotation for the gosec false positive (path is composed from XDG dataRoot
   + fixed filenames; 0o644 required for docker daemon uid mismatch).
 
+### Known limitations
+
+- **Wire-protocol drift vs `sophia-orchestator`**: integration testing on
+  2026-05-07 against the real orchestrator service revealed three mismatches
+  between sophia-cli's wire expectations and `sophia-orchestator`'s actual
+  HTTP surface:
+
+  | Endpoint | sophia-cli sends | orchestator implements |
+  |---|---|---|
+  | Health | `GET /api/v1/healthz` | `GET /api/v1/health` |
+  | Auth | (no auth header) | requires `X-Sophia-API-Key` |
+  | SSE event stream | `GET /api/v1/changes/{id}/events` | `GET /api/v1/changes/{cid}/phases/{pid}/events` (per-phase, not per-change) |
+
+  v0.1.0 ships with the protocol it was specified against (M5–M8 design).
+  The two repos evolved their HTTP surfaces in parallel without cross-repo
+  integration tests. Aligning them is **scoped to v0.2.0** via a coordinated
+  spec/ADR across both repositories. Until then, v0.1.0 is functional
+  against any orchestrator that honors the wire protocol documented in
+  the `internal/adapters/outbound/orchestratorhttp/` package and the M5
+  SSE spec — including the in-process stub used during M9 smoke
+  (`/tmp/orch-stub`, mirrors the same shape as `test/e2e/`'s test stubs).
+
+- **Real-orchestrator manual smoke**: NOT executed at v0.1.0 cut. The
+  `Sign-off` block in `docs/release/manual-smoke-checklist.md` records this
+  explicitly. v0.1.1 / v0.2.0 will land that validation once the wire
+  protocol is harmonized.
+
 ### Pre-existing milestone history
 
 The full M1-M8 milestone history below is preserved verbatim from the M9

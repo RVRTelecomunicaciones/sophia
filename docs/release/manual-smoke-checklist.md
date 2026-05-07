@@ -117,6 +117,47 @@ setup. Tag NEVER pushes without smoke.
 
 ---
 
+## Automated headless smoke — 2026-05-07
+
+The bullets below were executed automatically against `./bin/sophia` built
+from `release/v0.1.0` HEAD on 2026-05-07. **Orchestrator was unavailable**
+(docker daemon down + nothing listening on `:9080`), so every bullet that
+requires orchestrator-side state is marked **NOT EXECUTED — human gate**.
+The headless results are recorded here for traceability; they do NOT
+constitute the manual smoke sign-off.
+
+### Headless results
+
+| Bullet | Result | Exit | Notes |
+|--------|--------|------|-------|
+| `sophia version` | OK | 0 | `sophia 0.1.0-dev (commit 2123edd, built 2026-05-07T09:51:58Z)` — ldflags injection works. |
+| `sophia --help` | OK | 0 | All 9 commands listed (attach/changes/completion/doctor/help/init/run/start/status/stop/version); no "M8 stub". |
+| `sophia changes --help` | OK | 0 | 4 flags present: `--limit`, `--status`, `--project`, `--json`. |
+| `sophia attach --help` | OK | 0 | 3 M8 flags present: `--approval-timeout`, `--json`, `--no-tui`. |
+| `XDG_STATE_HOME=$(mktemp -d) sophia status` (empty) | OK | 0 | Prints `No local change found.` per spec §2.5 empty-resolution. |
+| `sophia status MISSING --json` (orchestrator down) | OK | 3 | Error mapped to exit 3 (orchestrator unreachable per spec §2.3). |
+| `sophia attach MISSING --no-tui --json` | OK | 3 | Same exit-3 mapping. |
+| `sophia changes` (orchestrator down) | OK | 3 | Same exit-3 mapping (vs the lenient warn-and-fall-through cambio 4 path which only applies on `.sophia.yaml` parse error). |
+
+### NOT EXECUTED — human gate (require live orchestrator + real terminal)
+
+- `sophia doctor` green-across — needs orchestrator + docker daemon.
+- `sophia run "smoke v0.1.0"` TUI flow — needs orchestrator + TTY.
+- `sophia run --no-tui --json` JSONL flow — needs orchestrator.
+- `sophia attach <running-id>` TUI reattach — needs orchestrator + TTY.
+- `sophia attach <terminal-id>` immediate close — needs orchestrator.
+- `sophia attach <pending-approval-id> --approval-timeout 60s` (D-M8-13 eager-arm) — needs orchestrator with a Change pending approval.
+- `sophia changes --status running` filter pass-through — needs orchestrator with running Changes.
+- `sophia changes --json | python3 -m json.tool` valid JSON — needs orchestrator with at least one Change.
+- `sophia status` (project-scoped fallback) — needs persisted Change ID + orchestrator to fetch.
+- `sophia status --json` populated → valid JSON object — needs orchestrator.
+- Stale `last_change_id` recovery message — needs orchestrator to confirm 404 messaging.
+- Malformed `.sophia.yaml` → exit 3 (cambio 4 strict mode) — can be tested headless but was not in this run; trivial to add if needed pre-tag.
+- `sophia init` in fresh git repo — testable headless; not in this run.
+- `sophia init --force` overwrite — testable headless; not in this run.
+
+---
+
 ## Sign-off
 
 | Field | Value |
@@ -132,3 +173,7 @@ Once signed, commit this file with the smoke results captured in the
 "Pre-requisite gaps" / "Findings" rows. The release workflow's tag push is
 authorized by the presence of a signed checklist on the same commit lineage
 as the tag.
+
+> **Note:** the "Automated headless smoke" section above is informational
+> only. The release gate is THIS sign-off block, signed by a human reviewer
+> after executing the orchestrator-dependent bullets manually.

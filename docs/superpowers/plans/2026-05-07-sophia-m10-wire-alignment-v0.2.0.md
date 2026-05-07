@@ -589,6 +589,13 @@ This plan is **NOT yet executable**. Three prerequisites must be satisfied befor
 
 When all three are green, mark this section "Authorized YYYY-MM-DD" and proceed to Phase 1 Task 1.1.
 
+**Authorized 2026-05-07** by repository architect. All three prerequisites confirmed:
+1. v0.1.0 formally closed; tags + releases not to be modified.
+2. Owner sign-off recorded; same architect for both repos.
+3. Calendar window 2–3 weeks committed for Phase 1 + cross-repo implementation + rc.1 + 7-day smoke + final v0.2.0.
+
+Active execution begins at Phase 1 Task 1.1. Research policy (D-M10-17 / `docs/research-policy.md`) is now in force for any external sources. M10 must not modify v0.1.0 artifacts; force tags forbidden; contract tests un-bypassable. Any decision not covered by ADR-0003 / D-M10-* triggers STOP-and-review before proceeding.
+
 ## Research log (D-M10-17)
 
 Every decision in this plan that was informed by external sources MUST

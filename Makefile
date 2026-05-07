@@ -14,7 +14,7 @@ LDFLAGS     := -X $(PKG)/internal/bootstrap.Version=$(VERSION) \
                -X $(PKG)/internal/bootstrap.Commit=$(COMMIT) \
                -X $(PKG)/internal/bootstrap.BuildDate=$(DATE)
 
-.PHONY: help build build-cover test vet lint coverage coverage-full test-integration clean run-doctor run-version
+.PHONY: help build build-cover test vet lint coverage coverage-full test-integration clean run-doctor run-version release-check release-snapshot
 
 help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS=":.*?## "}; {printf "  \033[36m%-15s\033[0m %s\n", $$1, $$2}'
@@ -51,6 +51,12 @@ run-doctor: build ## Build and run sophia doctor
 build-cover: ## Build sophia with -cover instrumentation into ./bin/sophia.cov
 	@mkdir -p $(BIN_DIR)
 	$(GO) build -cover -coverpkg=./... -ldflags '$(LDFLAGS)' -o $(BIN_COV) ./cmd/sophia
+
+release-check: ## Validate .goreleaser.yaml without building
+	goreleaser check
+
+release-snapshot: ## Build a local snapshot release (no publish)
+	goreleaser release --snapshot --clean --skip=publish,sign
 
 coverage-full: ## Full project coverage (unit + binary via e2e)
 	@rm -rf $(COVDIR) cover.unit.out cover.bin.out cover.merged.out

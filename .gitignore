@@ -12,6 +12,9 @@ coverage.html
 # coverage data
 coverage/
 
+# goreleaser snapshot output
+/dist/
+
 # IDE
 .idea/
 .vscode/

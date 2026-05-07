@@ -94,7 +94,13 @@ func hashBytes(b []byte) string {
 }
 
 func writeFile0644(p string, b []byte) error {
-	return os.WriteFile(p, b, 0o644) //nolint:gosec // compose files must be readable by the docker daemon process
+	// #nosec G703 -- path is constructed by Materialize from a caller-supplied
+	// dataRoot joined with fixed filenames (compose.yaml, compose.meta.json,
+	// compose.yaml.previous). No path component comes from end-user input;
+	// dataRoot is the orchestrator-resolved XDG data directory.
+	// 0o644 is required: docker compose runs as a different uid in some
+	// daemon setups and must be able to read the file.
+	return os.WriteFile(p, b, 0o644)
 }
 
 func readMeta(p string) (composeMeta, error) {

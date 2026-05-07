@@ -14,7 +14,7 @@ LDFLAGS     := -X $(PKG)/internal/bootstrap.Version=$(VERSION) \
                -X $(PKG)/internal/bootstrap.Commit=$(COMMIT) \
                -X $(PKG)/internal/bootstrap.BuildDate=$(DATE)
 
-.PHONY: help build build-cover test vet lint coverage coverage-full test-integration clean run-doctor run-version release-check release-snapshot
+.PHONY: help build build-cover test vet lint coverage coverage-full test-integration clean run-doctor run-version release-check release-snapshot vuln security licenses e2e
 
 help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS=":.*?## "}; {printf "  \033[36m%-15s\033[0m %s\n", $$1, $$2}'
@@ -57,6 +57,23 @@ release-check: ## Validate .goreleaser.yaml without building
 
 release-snapshot: ## Build a local snapshot release (no publish)
 	goreleaser release --snapshot --clean --skip=publish,sign
+
+vuln: ## govulncheck — blocks on reachable HIGH/CRITICAL CVEs
+	govulncheck ./...
+
+security: ## gosec — blocks on HIGH severity findings
+	gosec -severity high -quiet ./...
+
+licenses: ## Regenerate THIRD_PARTY_LICENSES.md (best-effort fallback if go-licenses fails)
+	@if go-licenses report ./... --template scripts/licenses.tmpl > THIRD_PARTY_LICENSES.md 2>/dev/null; then \
+	    echo "go-licenses report generated"; \
+	else \
+	    echo "go-licenses failed; falling back to go list inventory (best-effort)"; \
+	    scripts/licenses-fallback.sh > THIRD_PARTY_LICENSES.md; \
+	fi
+
+e2e: build ## Run build-tag-gated e2e smoke tests against the freshly built binary
+	$(GO) test -tags=e2e_smoke -timeout 60s ./test/e2e/...
 
 coverage-full: ## Full project coverage (unit + binary via e2e)
 	@rm -rf $(COVDIR) cover.unit.out cover.bin.out cover.merged.out

@@ -1,0 +1,10 @@
+# Third-Party Licenses
+
+The `sophia` binary statically links the following Go modules. Generated via
+`go-licenses report ./...` against the M9 release toolchain. Re-run via
+`make licenses` to refresh.
+
+| Module | Version | License |
+|--------|---------|---------|
+{{range .}}| `{{.Name}}` | `{{.Version}}` | [{{.LicenseName}}]({{.LicenseURL}}) |
+{{end}}

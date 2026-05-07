@@ -1070,4 +1070,51 @@ tar xzf sophia-cli_0.1.0_$(uname -s | tr A-Z a-z)_$(uname -m | sed 's/x86_64/amd
 
 ## Implementation Notes — Deviations from Plan
 
-<!-- Append observations during execution. Empty until Task 1 starts. -->
+### Task 7 (CI hardening) — golangci-lint v1.64 retained
+
+**Plan said:** bump golangci-lint to v2.x and migrate `.golangci.yml` to the v2 schema.
+
+**Done instead:** kept v1.64 (matches the locally-installed `golangci-lint v1.64.8`). Reason: the v1→v2 schema migration is mechanical but not zero-risk (new lints fire that didn't before; settings keys move). Pre-release week is the wrong time to absorb that. Decision deferred to M10 with a TODO comment in `ci.yml`.
+
+**Side effect on the plan:** D-M9-15 is about `go-licenses` fallback, not lint version — leave it as-is. The lint deviation is recorded only here (no decision register entry needed).
+
+### Task 6 (`.goreleaser.yaml`) — `format_overrides` removed
+
+**Plan said:** include a `format_overrides` block for windows zip.
+
+**Done instead:** dropped the override entirely because the build matrix only targets linux + darwin (D-M9-03). goreleaser v2's `formats: [tar.gz]` on the archive is sufficient; an unused `format_overrides` is just noise.
+
+### Task 6 follow-up — `dist/` added to `.gitignore` + `go mod tidy` promoted indirect deps
+
+`goreleaser`'s pre-hook ran `go mod tidy`, which moved `charm.land/bubbletea/v2` and `charm.land/lipgloss/v2` from `// indirect` to direct deps (they ARE imported directly by `internal/adapters/inbound/tui/`). Landed in a separate commit alongside `dist/` ignore so the goreleaser commit stayed scoped to release infra.
+
+### Task 8 follow-up — `gosec` suppress requires inline `#nosec` on the same line
+
+The plan said annotate gosec false positives with `// #nosec G123 - reason`. The detail not in the plan: standalone `gosec` only matches `#nosec` directives placed on the SAME line as the flagged statement. A preceding-block-comment form does not work. Compounded by the fact that `golangci-lint v1.64` (running gosec internally) honors `//nolint:gosec` instead of `#nosec`. The working form for `composeexec.writeFile0644` is a single trailing comment carrying both: `// #nosec G304,G306,G703 -- reason; nolint:gosec`. Three commits of trial-and-error landed before the suppression was honored by both tools (`98b346f` initial, `862013d` block-comment attempt, `ac63f9d` inline form).
+
+### Task 10 — SKIPPED at v0.1.0 cut
+
+**Plan said:** record a 60-90s asciinema cast at `assets/demo/sophia-quickstart.cast`, link from README, scrub for secrets.
+
+**Done instead:** README's "Demo" section documents the planned cast and includes the recording + scrub commands the next reviewer can run locally. No cast committed at v0.1.0. Reasons:
+- `asciinema` CLI not installed on the M9 reviewer's machine.
+- No live orchestrator available during M9 execution; the cast would have shown only `sophia version` and `sophia --help`, which is not a meaningful demo.
+- The cast is asset, not code — slipping it to v0.1.1 has zero impact on the release artifact's correctness.
+
+Tracked as a v0.1.1 deliverable in the README. The recording + scrub instructions in the README are the runbook for whoever picks this up.
+
+### Task 11 — SKIPPED per D-M9-10 bail-out
+
+**Plan said (optional):** add a `test/tui/attach_test.go` teatest to recover the M8 1% coverage gap by exercising `attachTUI`.
+
+**Done instead:** bailed out cleanly. `attachTUI` constructs `tui.NewProgram(...)` directly with no override hook on `cli.Deps`. Wiring a test would require either:
+- (a) adding a `TUIProgramOverride` field on `cli.Deps` so the test can inject a fake `tui.Program`-shaped value, or
+- (b) refactoring `attachTUI` to take a `programFactory func(...) *tui.Program` argument.
+
+Both are scope creep beyond M9's anti-list (no new application-layer logic, no API surface changes for testability alone). M8 sign-off explicitly accepted the 1% coverage gap; M9 honors that.
+
+### Task 12 — see release-prep tag (`m9-hardening-release-prep`)
+
+Manual smoke (D-M9-14) requires a real terminal + live orchestrator + Changes in distinct states — none available during M9 automated execution. Tasks 1-9 are all green; Task 12 steps 1-2 (tree hygiene + full validation pass) executed clean. Steps 3-6 (manual smoke, CHANGELOG promotion, tag push, post-release smoke) require human reviewer with the live setup.
+
+Releasing as `m9-hardening-release-prep` tag at the M9 tip preserves the validated state for whoever runs the manual smoke + tag push later. The CHANGELOG entry promotion from `[Unreleased]` to `[v0.1.0] - YYYY-MM-DD` plus the tag push happen on the same commit as the signed `manual-smoke-checklist.md`.

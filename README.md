@@ -150,13 +150,26 @@ artifact_store: engram
 
 ## Demo
 
-A 60–90 second asciinema cast of the quickstart flow lives at
-[`assets/demo/sophia-quickstart.cast`](assets/demo/sophia-quickstart.cast).
-
-Local playback:
+An asciinema cast of the quickstart flow is planned for the v0.1.1 release —
+it requires a live orchestrator + `asciinema` recorded against a real terminal,
+neither of which were available at v0.1.0 cut. Track the asset in
+[issue #1](https://github.com/RVRTelecomunicaciones/sophia-cli/issues/1) (to
+be filed alongside v0.1.0) or generate one locally:
 
 ```bash
+brew install asciinema   # or: pipx install asciinema
+mkdir -p assets/demo
+asciinema rec assets/demo/sophia-quickstart.cast --idle-time-limit 1.5
+# … run: sophia doctor; sophia run "demo"; sophia changes; sophia status …
 asciinema play assets/demo/sophia-quickstart.cast
+```
+
+Anti-secret scrub before sharing the cast (D-M9-16):
+
+```bash
+rg -i -e 'token' -e 'secret' -e 'bearer' -e 'ghp_' -e 'AKIA' \
+       -e 'password' -e 'api[_-]?key' \
+       assets/demo/*.cast && echo "SECRET — delete and re-record"
 ```
 
 ---

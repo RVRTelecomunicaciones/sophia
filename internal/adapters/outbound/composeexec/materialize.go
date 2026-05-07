@@ -94,13 +94,11 @@ func hashBytes(b []byte) string {
 }
 
 func writeFile0644(p string, b []byte) error {
-	// #nosec G304,G306 -- path is constructed by Materialize from a caller-
-	// supplied dataRoot joined with fixed filenames (compose.yaml,
-	// compose.meta.json, compose.yaml.previous). No path component comes
-	// from end-user input; dataRoot is the orchestrator-resolved XDG data
-	// directory. 0o644 is intentional because docker compose may run as a
-	// different uid in some daemon setups and must read the file.
-	return os.WriteFile(p, b, 0o644) //nolint:gosec // duplicate suppression for golangci-lint v1
+	// path is built by Materialize from a caller-supplied dataRoot joined
+	// with fixed filenames (compose.yaml, compose.meta.json, compose.yaml.previous);
+	// no segment is end-user input. 0o644 is intentional — docker compose may
+	// run as a different uid and must be able to read the file.
+	return os.WriteFile(p, b, 0o644) // #nosec G304,G306,G703 -- see comment above; nolint:gosec
 }
 
 func readMeta(p string) (composeMeta, error) {

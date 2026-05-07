@@ -9,9 +9,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/RVRTelecomunicaciones/sophia-cli/internal/adapters/inbound/jsonsink"
-	"github.com/RVRTelecomunicaciones/sophia-cli/internal/domain"
-	"github.com/RVRTelecomunicaciones/sophia-cli/internal/ports/inbound"
+	"github.com/RVRTelecomunicaciones/sophia/internal/adapters/inbound/jsonsink"
+	"github.com/RVRTelecomunicaciones/sophia/internal/domain"
+	"github.com/RVRTelecomunicaciones/sophia/internal/ports/inbound"
 )
 
 func TestSinkImplementsEventSink(t *testing.T) {

@@ -10,7 +10,7 @@ import (
 	"github.com/spf13/afero"
 	"gopkg.in/yaml.v3"
 
-	"github.com/RVRTelecomunicaciones/sophia-cli/internal/domain"
+	"github.com/RVRTelecomunicaciones/sophia/internal/domain"
 )
 
 // MaxProjectYAMLSize is the spec §6.3 cap (100 KB) for `.sophia.yaml`.

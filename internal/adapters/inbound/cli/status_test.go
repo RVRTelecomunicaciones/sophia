@@ -8,10 +8,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/RVRTelecomunicaciones/sophia-cli/internal/adapters/inbound/cli"
-	"github.com/RVRTelecomunicaciones/sophia-cli/internal/application"
-	"github.com/RVRTelecomunicaciones/sophia-cli/internal/domain"
-	"github.com/RVRTelecomunicaciones/sophia-cli/test/fakes"
+	"github.com/RVRTelecomunicaciones/sophia/internal/adapters/inbound/cli"
+	"github.com/RVRTelecomunicaciones/sophia/internal/application"
+	"github.com/RVRTelecomunicaciones/sophia/internal/domain"
+	"github.com/RVRTelecomunicaciones/sophia/test/fakes"
 )
 
 //nolint:unparam // pc/git returned for future tests; helper shape is the M8 contract.

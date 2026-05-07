@@ -5,8 +5,8 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/RVRTelecomunicaciones/sophia-cli/internal/ports/outbound"
-	"github.com/RVRTelecomunicaciones/sophia-cli/test/fakes"
+	"github.com/RVRTelecomunicaciones/sophia/internal/ports/outbound"
+	"github.com/RVRTelecomunicaciones/sophia/test/fakes"
 )
 
 func TestFakeSSEProberImplementsPort(t *testing.T) {

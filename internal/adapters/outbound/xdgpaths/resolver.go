@@ -9,7 +9,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/RVRTelecomunicaciones/sophia-cli/internal/domain"
+	"github.com/RVRTelecomunicaciones/sophia/internal/domain"
 )
 
 // Config configures the resolver. Env is injected for testability; in

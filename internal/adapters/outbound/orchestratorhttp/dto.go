@@ -3,7 +3,7 @@ package orchestratorhttp
 import (
 	"time"
 
-	"github.com/RVRTelecomunicaciones/sophia-cli/internal/domain"
+	"github.com/RVRTelecomunicaciones/sophia/internal/domain"
 )
 
 // CreateChangeRequest mirrors the body of POST /api/v1/changes.

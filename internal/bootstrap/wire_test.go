@@ -3,8 +3,8 @@ package bootstrap_test
 import (
 	"testing"
 
-	"github.com/RVRTelecomunicaciones/sophia-cli/internal/application"
-	"github.com/RVRTelecomunicaciones/sophia-cli/internal/bootstrap"
+	"github.com/RVRTelecomunicaciones/sophia/internal/application"
+	"github.com/RVRTelecomunicaciones/sophia/internal/bootstrap"
 )
 
 func TestNewProducesRoot(t *testing.T) {

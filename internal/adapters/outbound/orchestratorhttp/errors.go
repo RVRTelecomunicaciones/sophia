@@ -4,7 +4,7 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/RVRTelecomunicaciones/sophia-cli/internal/domain"
+	"github.com/RVRTelecomunicaciones/sophia/internal/domain"
 )
 
 // StatusError is returned by orchestratorhttp methods on non-2xx responses.

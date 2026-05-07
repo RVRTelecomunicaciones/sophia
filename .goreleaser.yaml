@@ -1,7 +1,7 @@
 # yaml-language-server: $schema=https://goreleaser.com/static/schema.json
 version: 2
 
-project_name: sophia-cli
+project_name: sophia
 
 before:
   hooks:
@@ -22,9 +22,9 @@ builds:
       - arm64
     ldflags:
       - -s -w
-      - -X github.com/RVRTelecomunicaciones/sophia-cli/internal/bootstrap.Version={{.Version}}
-      - -X github.com/RVRTelecomunicaciones/sophia-cli/internal/bootstrap.Commit={{.Commit}}
-      - -X github.com/RVRTelecomunicaciones/sophia-cli/internal/bootstrap.BuildDate={{.Date}}
+      - -X github.com/RVRTelecomunicaciones/sophia/internal/bootstrap.Version={{.Version}}
+      - -X github.com/RVRTelecomunicaciones/sophia/internal/bootstrap.Commit={{.Commit}}
+      - -X github.com/RVRTelecomunicaciones/sophia/internal/bootstrap.BuildDate={{.Date}}
 
 archives:
   - id: default
@@ -40,12 +40,15 @@ checksum:
   algorithm: sha256
 
 snapshot:
-  version_template: "{{ incpatch .Version }}-snapshot-{{ .ShortCommit }}"
+  # Hardcoded base — incpatch needs a semver tag, but the working repo carries
+  # non-semver milestone tags (m1-foundation … m9-hardening-release-prep).
+  # After v0.1.0 ships, future snapshots could move to "{{ incpatch .Version }}-…".
+  version_template: "0.0.1-snapshot-{{ .ShortCommit }}"
 
 release:
   github:
     owner: RVRTelecomunicaciones
-    name: sophia-cli
+    name: sophia
   draft: false
   prerelease: auto
   name_template: "{{.ProjectName}} v{{.Version}}"

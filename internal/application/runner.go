@@ -6,9 +6,9 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/RVRTelecomunicaciones/sophia-cli/internal/domain"
-	"github.com/RVRTelecomunicaciones/sophia-cli/internal/ports/inbound"
-	"github.com/RVRTelecomunicaciones/sophia-cli/internal/ports/outbound"
+	"github.com/RVRTelecomunicaciones/sophia/internal/domain"
+	"github.com/RVRTelecomunicaciones/sophia/internal/ports/inbound"
+	"github.com/RVRTelecomunicaciones/sophia/internal/ports/outbound"
 )
 
 // ExitError carries a process exit code per spec §2.3.

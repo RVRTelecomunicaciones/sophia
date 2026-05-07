@@ -3,7 +3,7 @@
 > Agentic change orchestrator companion — drives Sophia, observes Changes, gates approvals.
 
 [![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
-[![Go Reference](https://pkg.go.dev/badge/github.com/RVRTelecomunicaciones/sophia-cli.svg)](https://pkg.go.dev/github.com/RVRTelecomunicaciones/sophia-cli)
+[![Go Reference](https://pkg.go.dev/badge/github.com/RVRTelecomunicaciones/sophia.svg)](https://pkg.go.dev/github.com/RVRTelecomunicaciones/sophia)
 [![Go 1.26+](https://img.shields.io/badge/go-1.26%2B-00ADD8.svg)](https://go.dev/dl/)
 
 `sophia` is the human entry point to the Sophia ecosystem. It creates and observes
@@ -28,13 +28,13 @@ under a major version bump.
 
 ### From a release archive
 
-Download a tarball from the [latest release](https://github.com/RVRTelecomunicaciones/sophia-cli/releases/latest)
+Download a tarball from the [latest release](https://github.com/RVRTelecomunicaciones/sophia/releases/latest)
 and extract it to a directory on your `PATH`:
 
 ```bash
 # macOS arm64 example — adjust OS/ARCH for your platform
 curl -sL -o sophia.tar.gz \
-  https://github.com/RVRTelecomunicaciones/sophia-cli/releases/latest/download/sophia-cli_$(uname -s | tr A-Z a-z)_arm64.tar.gz
+  https://github.com/RVRTelecomunicaciones/sophia/releases/latest/download/sophia_$(uname -s | tr A-Z a-z)_arm64.tar.gz
 tar xzf sophia.tar.gz
 sudo install -m 755 sophia /usr/local/bin/sophia
 sophia version
@@ -47,8 +47,8 @@ Verify the SHA256 against `checksums.txt` from the same release page.
 Requires Go 1.26+ (the `toolchain` directive in `go.mod` pins `go1.26.2`).
 
 ```bash
-git clone https://github.com/RVRTelecomunicaciones/sophia-cli.git
-cd sophia-cli
+git clone https://github.com/RVRTelecomunicaciones/sophia.git
+cd sophia
 make build       # → ./bin/sophia
 ./bin/sophia version
 ```
@@ -56,7 +56,7 @@ make build       # → ./bin/sophia
 `go install` works too once the module is published:
 
 ```bash
-go install github.com/RVRTelecomunicaciones/sophia-cli/cmd/sophia@latest
+go install github.com/RVRTelecomunicaciones/sophia/cmd/sophia@latest
 ```
 
 ---

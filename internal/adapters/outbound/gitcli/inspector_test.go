@@ -6,8 +6,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/RVRTelecomunicaciones/sophia-cli/internal/adapters/outbound/gitcli"
-	"github.com/RVRTelecomunicaciones/sophia-cli/internal/ports/outbound"
+	"github.com/RVRTelecomunicaciones/sophia/internal/adapters/outbound/gitcli"
+	"github.com/RVRTelecomunicaciones/sophia/internal/ports/outbound"
 )
 
 func TestGitCLIImplementsInspector(t *testing.T) {

@@ -10,7 +10,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/RVRTelecomunicaciones/sophia-cli/internal/domain"
+	"github.com/RVRTelecomunicaciones/sophia/internal/domain"
 )
 
 // Config configures the Sink.

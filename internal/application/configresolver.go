@@ -6,8 +6,8 @@ import (
 	"fmt"
 	"path/filepath"
 
-	"github.com/RVRTelecomunicaciones/sophia-cli/internal/domain"
-	"github.com/RVRTelecomunicaciones/sophia-cli/internal/ports/outbound"
+	"github.com/RVRTelecomunicaciones/sophia/internal/domain"
+	"github.com/RVRTelecomunicaciones/sophia/internal/ports/outbound"
 )
 
 // Defaults applied when no other layer provides a value.

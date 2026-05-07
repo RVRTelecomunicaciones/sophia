@@ -6,8 +6,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/RVRTelecomunicaciones/sophia-cli/internal/adapters/inbound/tui"
-	"github.com/RVRTelecomunicaciones/sophia-cli/internal/domain"
+	"github.com/RVRTelecomunicaciones/sophia/internal/adapters/inbound/tui"
+	"github.com/RVRTelecomunicaciones/sophia/internal/domain"
 )
 
 // fakeSender records every tea.Msg the bridge forwards. It is goroutine-safe

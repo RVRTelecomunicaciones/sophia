@@ -6,8 +6,8 @@ import (
 	"sync"
 	"sync/atomic"
 
-	"github.com/RVRTelecomunicaciones/sophia-cli/internal/domain"
-	"github.com/RVRTelecomunicaciones/sophia-cli/internal/ports/inbound"
+	"github.com/RVRTelecomunicaciones/sophia/internal/domain"
+	"github.com/RVRTelecomunicaciones/sophia/internal/ports/inbound"
 )
 
 // DefaultBufferCapacity is the cap-256 buffer mandated by spec §4.5.

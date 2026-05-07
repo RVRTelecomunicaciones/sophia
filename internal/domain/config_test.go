@@ -3,7 +3,7 @@ package domain_test
 import (
 	"testing"
 
-	"github.com/RVRTelecomunicaciones/sophia-cli/internal/domain"
+	"github.com/RVRTelecomunicaciones/sophia/internal/domain"
 )
 
 func TestArtifactStoreModeIsValid(t *testing.T) {

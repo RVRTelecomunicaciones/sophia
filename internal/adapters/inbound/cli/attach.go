@@ -10,9 +10,9 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/RVRTelecomunicaciones/sophia-cli/internal/adapters/inbound/tui"
-	"github.com/RVRTelecomunicaciones/sophia-cli/internal/application"
-	"github.com/RVRTelecomunicaciones/sophia-cli/internal/domain"
+	"github.com/RVRTelecomunicaciones/sophia/internal/adapters/inbound/tui"
+	"github.com/RVRTelecomunicaciones/sophia/internal/application"
+	"github.com/RVRTelecomunicaciones/sophia/internal/domain"
 )
 
 func newAttachCmd(d Deps) *cobra.Command {

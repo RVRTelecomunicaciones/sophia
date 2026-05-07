@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/RVRTelecomunicaciones/sophia-cli/internal/infrastructure/logging"
+	"github.com/RVRTelecomunicaciones/sophia/internal/infrastructure/logging"
 )
 
 func TestJSONLHandlerEmitsValidLines(t *testing.T) {

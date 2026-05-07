@@ -16,6 +16,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 First publicly tagged release. Bundles the entire M1-M8 feature surface plus
 the M9 hardening + release infrastructure.
 
+### BREAKING
+
+- **Go module path renamed** from `github.com/RVRTelecomunicaciones/sophia-cli`
+  to `github.com/RVRTelecomunicaciones/sophia` to match the GitHub repository
+  (`RVRTelecomunicaciones/sophia`). This is the first publicly visible commit
+  of the module — there are no downstream importers to migrate. `go install
+  github.com/RVRTelecomunicaciones/sophia/cmd/sophia@latest` is the canonical
+  install path going forward.
+
 ### Added
 
 - **Release packaging** (M9): goreleaser v2 cross-platform builds (linux+darwin

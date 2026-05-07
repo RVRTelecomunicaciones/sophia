@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/RVRTelecomunicaciones/sophia-cli/internal/infrastructure/httpclient"
+	"github.com/RVRTelecomunicaciones/sophia/internal/infrastructure/httpclient"
 )
 
 // Config controls the client.

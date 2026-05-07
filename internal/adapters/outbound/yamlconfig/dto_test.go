@@ -3,8 +3,8 @@ package yamlconfig_test
 import (
 	"testing"
 
-	"github.com/RVRTelecomunicaciones/sophia-cli/internal/adapters/outbound/yamlconfig"
-	"github.com/RVRTelecomunicaciones/sophia-cli/internal/domain"
+	"github.com/RVRTelecomunicaciones/sophia/internal/adapters/outbound/yamlconfig"
+	"github.com/RVRTelecomunicaciones/sophia/internal/domain"
 	"gopkg.in/yaml.v3"
 )
 

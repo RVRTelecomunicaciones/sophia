@@ -8,8 +8,8 @@ import (
 	"os/signal"
 	"syscall"
 
-	"github.com/RVRTelecomunicaciones/sophia-cli/internal/application"
-	"github.com/RVRTelecomunicaciones/sophia-cli/internal/bootstrap"
+	"github.com/RVRTelecomunicaciones/sophia/internal/application"
+	"github.com/RVRTelecomunicaciones/sophia/internal/bootstrap"
 )
 
 func main() {

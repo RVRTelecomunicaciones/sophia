@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/RVRTelecomunicaciones/sophia-cli/internal/domain"
+	"github.com/RVRTelecomunicaciones/sophia/internal/domain"
 )
 
 // noopSink lets the tests inspect the wrapper without driving a full sink.

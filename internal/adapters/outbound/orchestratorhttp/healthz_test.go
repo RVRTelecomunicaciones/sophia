@@ -8,8 +8,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/RVRTelecomunicaciones/sophia-cli/internal/adapters/outbound/orchestratorhttp"
-	"github.com/RVRTelecomunicaciones/sophia-cli/internal/ports/outbound"
+	"github.com/RVRTelecomunicaciones/sophia/internal/adapters/outbound/orchestratorhttp"
+	"github.com/RVRTelecomunicaciones/sophia/internal/ports/outbound"
 )
 
 func TestClientImplementsOrchestratorClient(t *testing.T) {

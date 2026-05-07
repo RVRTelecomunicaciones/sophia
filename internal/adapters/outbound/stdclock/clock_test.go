@@ -4,8 +4,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/RVRTelecomunicaciones/sophia-cli/internal/adapters/outbound/stdclock"
-	"github.com/RVRTelecomunicaciones/sophia-cli/internal/ports/outbound"
+	"github.com/RVRTelecomunicaciones/sophia/internal/adapters/outbound/stdclock"
+	"github.com/RVRTelecomunicaciones/sophia/internal/ports/outbound"
 )
 
 func TestStdClockImplementsClock(t *testing.T) {

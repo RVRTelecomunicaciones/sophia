@@ -3,7 +3,7 @@ package fakes
 import (
 	"errors"
 
-	"github.com/RVRTelecomunicaciones/sophia-cli/internal/domain"
+	"github.com/RVRTelecomunicaciones/sophia/internal/domain"
 )
 
 // ErrFakeValidate is a sentinel for ValidateDirs failure tests.

@@ -5,9 +5,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/RVRTelecomunicaciones/sophia-cli/internal/adapters/inbound/cli"
-	"github.com/RVRTelecomunicaciones/sophia-cli/internal/application"
-	"github.com/RVRTelecomunicaciones/sophia-cli/test/fakes"
+	"github.com/RVRTelecomunicaciones/sophia/internal/adapters/inbound/cli"
+	"github.com/RVRTelecomunicaciones/sophia/internal/application"
+	"github.com/RVRTelecomunicaciones/sophia/test/fakes"
 )
 
 func newStartDeps() (cli.Deps, *fakes.FakeComposeRunner) {

@@ -8,8 +8,8 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/exp/teatest/v2"
 
-	"github.com/RVRTelecomunicaciones/sophia-cli/internal/adapters/inbound/tui"
-	"github.com/RVRTelecomunicaciones/sophia-cli/internal/domain"
+	"github.com/RVRTelecomunicaciones/sophia/internal/adapters/inbound/tui"
+	"github.com/RVRTelecomunicaciones/sophia/internal/domain"
 )
 
 // TestTUITabTogglesToApplyBoard sends a task.started event, presses Tab,

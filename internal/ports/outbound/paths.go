@@ -1,7 +1,7 @@
 package outbound
 
 import (
-	"github.com/RVRTelecomunicaciones/sophia-cli/internal/domain"
+	"github.com/RVRTelecomunicaciones/sophia/internal/domain"
 )
 
 // PathResolver resolves and validates the four XDG-style roots used by the CLI.

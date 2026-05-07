@@ -10,7 +10,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/RVRTelecomunicaciones/sophia-cli/internal/infrastructure/httpclient"
+	"github.com/RVRTelecomunicaciones/sophia/internal/infrastructure/httpclient"
 )
 
 // DefaultPath is the SSE endpoint path probed by V1.

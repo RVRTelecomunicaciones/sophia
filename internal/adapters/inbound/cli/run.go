@@ -11,10 +11,10 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/RVRTelecomunicaciones/sophia-cli/internal/adapters/inbound/jsonsink"
-	"github.com/RVRTelecomunicaciones/sophia-cli/internal/adapters/inbound/tui"
-	"github.com/RVRTelecomunicaciones/sophia-cli/internal/application"
-	"github.com/RVRTelecomunicaciones/sophia-cli/internal/ports/inbound"
+	"github.com/RVRTelecomunicaciones/sophia/internal/adapters/inbound/jsonsink"
+	"github.com/RVRTelecomunicaciones/sophia/internal/adapters/inbound/tui"
+	"github.com/RVRTelecomunicaciones/sophia/internal/application"
+	"github.com/RVRTelecomunicaciones/sophia/internal/ports/inbound"
 )
 
 func newRunCmd(d Deps) *cobra.Command {

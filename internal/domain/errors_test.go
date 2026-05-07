@@ -4,7 +4,7 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/RVRTelecomunicaciones/sophia-cli/internal/domain"
+	"github.com/RVRTelecomunicaciones/sophia/internal/domain"
 )
 
 func TestSentinelErrorsAreDistinct(t *testing.T) {

@@ -4,8 +4,8 @@ import (
 	"context"
 	"sync"
 
-	"github.com/RVRTelecomunicaciones/sophia-cli/internal/domain"
-	"github.com/RVRTelecomunicaciones/sophia-cli/internal/ports/outbound"
+	"github.com/RVRTelecomunicaciones/sophia/internal/domain"
+	"github.com/RVRTelecomunicaciones/sophia/internal/ports/outbound"
 )
 
 type FakeEventStream struct {

@@ -6,7 +6,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/RVRTelecomunicaciones/sophia-cli/internal/domain"
+	"github.com/RVRTelecomunicaciones/sophia/internal/domain"
 )
 
 type FakeProjectConfigStore struct {

@@ -6,7 +6,7 @@ import (
 
 	lipgloss "charm.land/lipgloss/v2"
 
-	"github.com/RVRTelecomunicaciones/sophia-cli/internal/domain"
+	"github.com/RVRTelecomunicaciones/sophia/internal/domain"
 )
 
 // bannerStyle is the lipgloss style for the approval banner box.

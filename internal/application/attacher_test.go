@@ -6,10 +6,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/RVRTelecomunicaciones/sophia-cli/internal/application"
-	"github.com/RVRTelecomunicaciones/sophia-cli/internal/domain"
-	"github.com/RVRTelecomunicaciones/sophia-cli/internal/ports/outbound"
-	"github.com/RVRTelecomunicaciones/sophia-cli/test/fakes"
+	"github.com/RVRTelecomunicaciones/sophia/internal/application"
+	"github.com/RVRTelecomunicaciones/sophia/internal/domain"
+	"github.com/RVRTelecomunicaciones/sophia/internal/ports/outbound"
+	"github.com/RVRTelecomunicaciones/sophia/test/fakes"
 )
 
 func newAttacher(orch *fakes.FakeOrchestrator, stream *fakes.FakeEventStream, sink *recordingSink) (*application.Attacher, *fakes.FakeStateStore) {

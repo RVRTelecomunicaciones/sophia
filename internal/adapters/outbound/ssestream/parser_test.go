@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/RVRTelecomunicaciones/sophia-cli/internal/adapters/outbound/ssestream"
+	"github.com/RVRTelecomunicaciones/sophia/internal/adapters/outbound/ssestream"
 )
 
 func TestParseEventDecodesKnownEventType(t *testing.T) {

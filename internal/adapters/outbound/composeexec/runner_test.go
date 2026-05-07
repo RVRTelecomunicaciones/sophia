@@ -6,8 +6,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/RVRTelecomunicaciones/sophia-cli/internal/adapters/outbound/composeexec"
-	"github.com/RVRTelecomunicaciones/sophia-cli/internal/ports/outbound"
+	"github.com/RVRTelecomunicaciones/sophia/internal/adapters/outbound/composeexec"
+	"github.com/RVRTelecomunicaciones/sophia/internal/ports/outbound"
 )
 
 func TestComposeExecImplementsRunner(t *testing.T) {

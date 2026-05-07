@@ -7,7 +7,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/RVRTelecomunicaciones/sophia-cli/internal/application"
+	"github.com/RVRTelecomunicaciones/sophia/internal/application"
 )
 
 func newDoctorCmd(d Deps) *cobra.Command {

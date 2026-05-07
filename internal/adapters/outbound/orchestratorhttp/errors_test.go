@@ -4,8 +4,8 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/RVRTelecomunicaciones/sophia-cli/internal/adapters/outbound/orchestratorhttp"
-	"github.com/RVRTelecomunicaciones/sophia-cli/internal/domain"
+	"github.com/RVRTelecomunicaciones/sophia/internal/adapters/outbound/orchestratorhttp"
+	"github.com/RVRTelecomunicaciones/sophia/internal/domain"
 )
 
 func TestStatusErrorPreservesCode(t *testing.T) {

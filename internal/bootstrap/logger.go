@@ -4,7 +4,7 @@ import (
 	"io"
 	"log/slog"
 
-	"github.com/RVRTelecomunicaciones/sophia-cli/internal/infrastructure/logging"
+	"github.com/RVRTelecomunicaciones/sophia/internal/infrastructure/logging"
 )
 
 func NewLogger(w io.Writer, level slog.Level) *slog.Logger {

@@ -11,7 +11,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/RVRTelecomunicaciones/sophia-cli/internal/adapters/outbound/composeexec"
+	"github.com/RVRTelecomunicaciones/sophia/internal/adapters/outbound/composeexec"
 )
 
 func dockerAvailable(t *testing.T) bool {

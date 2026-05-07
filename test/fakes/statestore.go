@@ -4,7 +4,7 @@ import (
 	"context"
 	"sync"
 
-	"github.com/RVRTelecomunicaciones/sophia-cli/internal/domain"
+	"github.com/RVRTelecomunicaciones/sophia/internal/domain"
 )
 
 type FakeStateStore struct {

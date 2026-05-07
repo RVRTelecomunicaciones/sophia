@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/RVRTelecomunicaciones/sophia-cli/internal/adapters/outbound/osbrowser"
+	"github.com/RVRTelecomunicaciones/sophia/internal/adapters/outbound/osbrowser"
 )
 
 func TestOpenAcceptsHTTPS(t *testing.T) {

@@ -4,8 +4,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/RVRTelecomunicaciones/sophia-cli/internal/adapters/inbound/tui"
-	"github.com/RVRTelecomunicaciones/sophia-cli/internal/domain"
+	"github.com/RVRTelecomunicaciones/sophia/internal/adapters/inbound/tui"
+	"github.com/RVRTelecomunicaciones/sophia/internal/domain"
 )
 
 func TestNewModelInitializesNinePhaseRows(t *testing.T) {

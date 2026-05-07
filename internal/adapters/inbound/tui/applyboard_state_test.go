@@ -3,8 +3,8 @@ package tui_test
 import (
 	"testing"
 
-	"github.com/RVRTelecomunicaciones/sophia-cli/internal/adapters/inbound/tui"
-	"github.com/RVRTelecomunicaciones/sophia-cli/internal/domain"
+	"github.com/RVRTelecomunicaciones/sophia/internal/adapters/inbound/tui"
+	"github.com/RVRTelecomunicaciones/sophia/internal/domain"
 )
 
 func TestNewApplyBoardStateIsEmpty(t *testing.T) {

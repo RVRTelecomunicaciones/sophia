@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/RVRTelecomunicaciones/sophia-cli/internal/infrastructure/httpclient"
+	"github.com/RVRTelecomunicaciones/sophia/internal/infrastructure/httpclient"
 )
 
 func TestNewReturnsClient(t *testing.T) {

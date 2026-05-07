@@ -1,8 +1,8 @@
 package cli
 
 import (
-	"github.com/RVRTelecomunicaciones/sophia-cli/internal/adapters/outbound/orchestratorhttp"
-	"github.com/RVRTelecomunicaciones/sophia-cli/internal/domain"
+	"github.com/RVRTelecomunicaciones/sophia/internal/adapters/outbound/orchestratorhttp"
+	"github.com/RVRTelecomunicaciones/sophia/internal/domain"
 )
 
 // changeResponseFromDomain converts a domain.Change back to the

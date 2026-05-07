@@ -3,7 +3,7 @@ package tui
 import (
 	"time"
 
-	"github.com/RVRTelecomunicaciones/sophia-cli/internal/domain"
+	"github.com/RVRTelecomunicaciones/sophia/internal/domain"
 )
 
 // DefaultWidth and DefaultHeight are conservative defaults for terminals

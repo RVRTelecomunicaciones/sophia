@@ -3,7 +3,7 @@
 package yamlconfig
 
 import (
-	"github.com/RVRTelecomunicaciones/sophia-cli/internal/domain"
+	"github.com/RVRTelecomunicaciones/sophia/internal/domain"
 )
 
 // ProjectDTO is the on-disk shape of `.sophia.yaml`.

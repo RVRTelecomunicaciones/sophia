@@ -11,8 +11,8 @@ import (
 
 	sse "github.com/tmaxmax/go-sse"
 
-	"github.com/RVRTelecomunicaciones/sophia-cli/internal/domain"
-	"github.com/RVRTelecomunicaciones/sophia-cli/internal/ports/outbound"
+	"github.com/RVRTelecomunicaciones/sophia/internal/domain"
+	"github.com/RVRTelecomunicaciones/sophia/internal/ports/outbound"
 )
 
 // DefaultStreamPath is the URL template for the SSE event stream. The single

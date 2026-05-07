@@ -1,7 +1,7 @@
 package tui
 
 import (
-	"github.com/RVRTelecomunicaciones/sophia-cli/internal/domain"
+	"github.com/RVRTelecomunicaciones/sophia/internal/domain"
 )
 
 // MaxApplyBoardGroups bounds the in-memory group count (RM7-07). When the

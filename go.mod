@@ -1,4 +1,4 @@
-module github.com/RVRTelecomunicaciones/sophia-cli
+module github.com/RVRTelecomunicaciones/sophia
 
 go 1.25.0
 

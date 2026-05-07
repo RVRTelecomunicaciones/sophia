@@ -7,12 +7,12 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/RVRTelecomunicaciones/sophia-cli/internal/adapters/inbound/cli"
-	"github.com/RVRTelecomunicaciones/sophia-cli/internal/application"
-	"github.com/RVRTelecomunicaciones/sophia-cli/internal/domain"
-	"github.com/RVRTelecomunicaciones/sophia-cli/internal/ports/inbound"
-	"github.com/RVRTelecomunicaciones/sophia-cli/internal/ports/outbound"
-	"github.com/RVRTelecomunicaciones/sophia-cli/test/fakes"
+	"github.com/RVRTelecomunicaciones/sophia/internal/adapters/inbound/cli"
+	"github.com/RVRTelecomunicaciones/sophia/internal/application"
+	"github.com/RVRTelecomunicaciones/sophia/internal/domain"
+	"github.com/RVRTelecomunicaciones/sophia/internal/ports/inbound"
+	"github.com/RVRTelecomunicaciones/sophia/internal/ports/outbound"
+	"github.com/RVRTelecomunicaciones/sophia/test/fakes"
 )
 
 func newRunDeps(t *testing.T, sinkBuf *bytes.Buffer) (cli.Deps, *fakes.FakeOrchestrator, *fakes.FakeEventStream) {

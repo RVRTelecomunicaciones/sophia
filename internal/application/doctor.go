@@ -7,7 +7,7 @@ import (
 	"errors"
 	"strings"
 
-	"github.com/RVRTelecomunicaciones/sophia-cli/internal/ports/outbound"
+	"github.com/RVRTelecomunicaciones/sophia/internal/ports/outbound"
 )
 
 // CheckLevel categorizes a doctor check outcome.

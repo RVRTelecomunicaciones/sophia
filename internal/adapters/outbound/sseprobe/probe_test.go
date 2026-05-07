@@ -6,8 +6,8 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/RVRTelecomunicaciones/sophia-cli/internal/adapters/outbound/sseprobe"
-	"github.com/RVRTelecomunicaciones/sophia-cli/internal/ports/outbound"
+	"github.com/RVRTelecomunicaciones/sophia/internal/adapters/outbound/sseprobe"
+	"github.com/RVRTelecomunicaciones/sophia/internal/ports/outbound"
 )
 
 func TestProberImplementsPort(t *testing.T) {

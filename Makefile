@@ -2,7 +2,7 @@
 
 GO          ?= go
 GOLANGCI    ?= golangci-lint
-PKG         := github.com/RVRTelecomunicaciones/sophia-cli
+PKG         := github.com/RVRTelecomunicaciones/sophia
 BIN_DIR     := bin
 BIN         := $(BIN_DIR)/sophia
 BIN_COV     := $(BIN_DIR)/sophia.cov

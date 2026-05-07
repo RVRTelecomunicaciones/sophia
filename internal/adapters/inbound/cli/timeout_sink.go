@@ -6,8 +6,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/RVRTelecomunicaciones/sophia-cli/internal/domain"
-	"github.com/RVRTelecomunicaciones/sophia-cli/internal/ports/inbound"
+	"github.com/RVRTelecomunicaciones/sophia/internal/domain"
+	"github.com/RVRTelecomunicaciones/sophia/internal/ports/inbound"
 )
 
 // errApprovalTimeout is the sentinel for approval-timeout expiry.

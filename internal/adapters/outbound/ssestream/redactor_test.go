@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/RVRTelecomunicaciones/sophia-cli/internal/adapters/outbound/ssestream"
+	"github.com/RVRTelecomunicaciones/sophia/internal/adapters/outbound/ssestream"
 )
 
 func TestRedactStringRedactsBearerTokens(t *testing.T) {

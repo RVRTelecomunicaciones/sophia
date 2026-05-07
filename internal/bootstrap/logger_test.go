@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/RVRTelecomunicaciones/sophia-cli/internal/bootstrap"
+	"github.com/RVRTelecomunicaciones/sophia/internal/bootstrap"
 )
 
 func TestNewLoggerWritesJSONL(t *testing.T) {

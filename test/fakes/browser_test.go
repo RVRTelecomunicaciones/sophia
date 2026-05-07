@@ -4,8 +4,8 @@ import (
 	"context"
 	"testing"
 
-	"github.com/RVRTelecomunicaciones/sophia-cli/internal/ports/outbound"
-	"github.com/RVRTelecomunicaciones/sophia-cli/test/fakes"
+	"github.com/RVRTelecomunicaciones/sophia/internal/ports/outbound"
+	"github.com/RVRTelecomunicaciones/sophia/test/fakes"
 )
 
 func TestFakeBrowserImplementsPort(t *testing.T) {

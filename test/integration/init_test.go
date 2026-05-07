@@ -9,11 +9,11 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/RVRTelecomunicaciones/sophia-cli/internal/adapters/outbound/filestate"
-	"github.com/RVRTelecomunicaciones/sophia-cli/internal/adapters/outbound/gitcli"
-	"github.com/RVRTelecomunicaciones/sophia-cli/internal/adapters/outbound/yamlconfig"
-	"github.com/RVRTelecomunicaciones/sophia-cli/internal/application"
-	"github.com/RVRTelecomunicaciones/sophia-cli/internal/domain"
+	"github.com/RVRTelecomunicaciones/sophia/internal/adapters/outbound/filestate"
+	"github.com/RVRTelecomunicaciones/sophia/internal/adapters/outbound/gitcli"
+	"github.com/RVRTelecomunicaciones/sophia/internal/adapters/outbound/yamlconfig"
+	"github.com/RVRTelecomunicaciones/sophia/internal/application"
+	"github.com/RVRTelecomunicaciones/sophia/internal/domain"
 )
 
 func gitAvailable(t *testing.T) bool {

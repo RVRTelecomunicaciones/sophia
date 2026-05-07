@@ -7,9 +7,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/RVRTelecomunicaciones/sophia-cli/internal/application"
-	"github.com/RVRTelecomunicaciones/sophia-cli/internal/domain"
-	"github.com/RVRTelecomunicaciones/sophia-cli/test/fakes"
+	"github.com/RVRTelecomunicaciones/sophia/internal/application"
+	"github.com/RVRTelecomunicaciones/sophia/internal/domain"
+	"github.com/RVRTelecomunicaciones/sophia/test/fakes"
 )
 
 func newStatus() (*application.StatusReader, *fakes.FakeOrchestrator, *fakes.FakeStateStore, *fakes.FakeGitInspector, *fakes.FakeProjectConfigStore) {

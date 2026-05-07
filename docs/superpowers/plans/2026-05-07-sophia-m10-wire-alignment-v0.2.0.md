@@ -38,6 +38,7 @@
 | D-M10-14 | `/health` vs `/ready` semantics | `GET /api/v1/health` = **process is up** (HTTP server responding). MUST always succeed if the binary is running, even if downstream deps (DB, governance, memory, runtime) are dead. **Hard gate** in `sophia doctor`: 200 → green check; non-200 → fail. `GET /api/v1/ready` = **dependencies are reachable + ready** (DB connectable, downstream services reachable). MAY return 503 transiently. **Warning/degraded** in `sophia doctor`: 200 → green; 503 → yellow check with `(orchestrator dependencies degraded)` annotation but doctor stays exit 0; absent endpoint → "ready endpoint not implemented; skipping". Doctor MUST NOT exit non-zero on `/ready` failure alone. |
 | D-M10-15 | Workspace-independence gate | Before tagging EITHER repo, run `GOWORK=off go test ./...` locally and in CI. Confirms the build does not silently depend on a `go.work` file in the developer's tree (which would NOT be present on a fresh clone or release runner). New `make test-no-workspace` target in both repos. CI gate added to `release.yml` pre-flight. Failure to pass blocks tag push (release blocker, see D-M10-16). |
 | D-M10-16 | Release blockers (v0.2.0 final tag must NOT push if any of these fail) | (1) `docs/specs/sophia-wire-v1.sha256` differs between sophia-cli and sophia-orchestator at the to-be-tagged commit. (2) `make contract` fails in either repo. (3) Cross-repo smoke (the 7-day window matrix from Task 7.2) has any unresolved RED entry. (4) sophia-cli v0.2.0 CHANGELOG does NOT carry an explicit "Compatibility" section stating the version is **incompatible with sophia-orchestator v0.1.x and earlier; requires sophia-orchestator v0.2.0+**. (5) `GOWORK=off go test ./...` fails in either repo (D-M10-15). All five gates are checked by Task 12.x.x.x of the M10 release flow before any tag push. |
+| D-M10-17 | Research freshness policy | All external research that informs M10 decisions MUST follow `docs/research-policy.md`. Primary window: 2026-03-07 → 2026-05-07. Fallback window: 2026-01-01 → present. Pre-2026 sources are inadmissible for new decisions. Undated official docs may serve as secondary reference tagged `official current docs, undated` but never as sole basis for architecture/CI/release/security/API decisions. Every research-driven decision in M10 records an entry in the "Research log" section of this plan. Empty log on a research-driven phase blocks release. |
 
 ---
 
@@ -587,6 +588,31 @@ This plan is **NOT yet executable**. Three prerequisites must be satisfied befor
 3. **Calendar window confirmed.** 2-3 weeks of focus available for: 1 week spec authoring + parallel Phase 3/4 implementation + 7-day rc smoke window. Slipping mid-flight risks invoking the A1 fallback.
 
 When all three are green, mark this section "Authorized YYYY-MM-DD" and proceed to Phase 1 Task 1.1.
+
+## Research log (D-M10-17)
+
+Every decision in this plan that was informed by external sources MUST
+record an entry here. Template per `docs/research-policy.md`:
+
+```markdown
+### YYYY-MM-DD — <decision short title>
+
+- **Problem:** <one sentence>
+- **Source(s) consulted:**
+  - <URL> — <YYYY-MM-DD>
+  - <URL> — `official current docs, undated`
+- **Decision:** <what was decided>
+- **Impact:** <which plan/spec/code surface changed>
+- **Researcher:** <name>
+```
+
+Empty until Phase 1 Task 1.1 starts; the spec-authoring task is the
+first M10 activity that consults external sources (e.g. SSE/HTTP
+specifications, current `chi/v5` and `pgx/v5` patterns, golangci-lint
+v2 lint defaults, goreleaser v2 release attestation feature set,
+sigstore/cosign current state).
+
+---
 
 ## Implementation Notes — Deviations from Plan
 

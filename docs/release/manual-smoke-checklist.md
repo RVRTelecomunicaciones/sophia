@@ -117,6 +117,48 @@ setup. Tag NEVER pushes without smoke.
 
 ---
 
+## Stub-orchestrator smoke — 2026-05-07
+
+A second automated pass was run against an **in-process stub orchestrator**
+(see `/tmp/orch-stub/main.go`) that honors the wire protocol sophia-cli
+expects: `GET /api/v1/healthz`, `GET /api/v1/events`, `POST /api/v1/changes`,
+`GET /api/v1/changes`, `GET /api/v1/changes/{id}`, `GET /api/v1/changes/{id}/events`.
+The stub returns a deterministic happy-path: every POST creates a `running`
+Change, the SSE endpoint emits one `phase.completed` then closes, the
+post-stream `GetChange` returns `done`. Subsequent `/events` reconnects
+return 401 to terminate the SSE retry loop fast (mirrors
+`test/e2e/attach_workflow_test.go`).
+
+**Caveat:** this is NOT the real orchestrator. It validates that sophia-cli
+correctly speaks the wire protocol; it does NOT validate that the real
+orchestrator's behavior matches the spec. Live-orchestrator validation by
+the human reviewer remains the canonical M9 gate before any production
+release announcement.
+
+### Stub smoke results
+
+| Bullet | Command | Result | Exit | Notes |
+|--------|---------|--------|------|-------|
+| `sophia doctor` | `./bin/sophia doctor` | OK | 0 | 6 ok / 0 fail. XDG dirs created with 0700 perms. |
+| `sophia run` JSONL | `sophia run "smoke v0.1.0" --no-tui --json` | OK | 0 | snapshot → event → snapshot(done) → complete final_status=done. |
+| `sophia attach` JSONL (running → done) | `sophia attach STUB-001 --no-tui --json` | OK | 0 | Stub already terminal at attach time → snapshot + complete; short-circuit path. |
+| `sophia attach MISSING` | `sophia attach MISSING --no-tui --json` | OK | 3 | 404 mapped to ExitError{Code: 3} per spec §2.3. |
+| `sophia changes` table | `sophia changes` | OK | 0 | Header + 1 row aligned. |
+| `sophia changes --json` valid JSON | `sophia changes --json \| python3 -m json.tool` | OK | 0 | Valid array; one item; all expected fields present. |
+| `sophia status` project-scoped | `cd /tmp/smoke && sophia status` | OK | 0 | `Source: project` after run persisted last_change_id. |
+| `sophia status <id>` flag | `sophia status STUB-001` | OK | 0 | `Source: flag` overrides project-scoped. |
+| `sophia status --json` populated | `sophia status STUB-001 --json` | OK | 0 | Valid JSON object; all fields present. |
+
+### NOT EXECUTED in stub smoke (require real terminal + live orchestrator)
+
+- TUI flows: `sophia run` default-mode, `sophia attach <id>` default-mode (need TTY for bubbletea).
+- `sophia attach <pending-approval-id> --approval-timeout` D-M8-13 eager-arm — stub does not produce a `PhaseStatusBlocked` snapshot; would need orchestrator with real approval gate.
+- `--approval-timeout` exit 5 — orchestrator-side gate required.
+- Stale `last_change_id` recovery — testable headless but not in this run.
+- Malformed `.sophia.yaml` exit 3 (cambio 4 strict mode) — testable headless but not in this run.
+
+---
+
 ## Automated headless smoke — 2026-05-07
 
 The bullets below were executed automatically against `./bin/sophia` built

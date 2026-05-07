@@ -36,10 +36,11 @@ jobs:
           go tool cover -func=cover.out | tail -n 1
 
       - name: golangci-lint
-        uses: golangci/golangci-lint-action@v6
+        uses: golangci/golangci-lint-action@v7
         with:
           # v2 line: v1.64 binaries were built with Go 1.24 and refuse to lint
           # Go 1.26.x code. .golangci.yml is migrated to the v2 schema.
+          # action v7 is required for golangci-lint v2.x.
           version: v2.12
           args: --timeout=3m
 

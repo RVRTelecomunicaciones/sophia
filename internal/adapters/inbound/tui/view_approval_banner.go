@@ -27,14 +27,13 @@ var bannerStyle = lipgloss.NewStyle().
 func renderApprovalBanner(_ Model, gate domain.ApprovalGate) string {
 	var b strings.Builder
 	b.WriteString("Approval required by governance\n\n")
-	b.WriteString(fmt.Sprintf("Phase: %-12s Risk: %s\n",
+	fmt.Fprintf(&b, "Phase: %-12s Risk: %s\n",
 		stringOrDash(string(gate.Phase)),
-		stringOrDash(gate.Risk),
-	))
-	b.WriteString(fmt.Sprintf("Reason: %s\n", stringOrDash(gate.Reason)))
-	b.WriteString(fmt.Sprintf("Policy: %s\n", stringOrDash(gate.Policy)))
+		stringOrDash(gate.Risk))
+	fmt.Fprintf(&b, "Reason: %s\n", stringOrDash(gate.Reason))
+	fmt.Fprintf(&b, "Policy: %s\n", stringOrDash(gate.Policy))
 	b.WriteString("\n")
-	b.WriteString(fmt.Sprintf("Gate: %s\n", stringOrDash(gate.URL)))
+	fmt.Fprintf(&b, "Gate: %s\n", stringOrDash(gate.URL))
 	b.WriteString("Status: waiting\n")
 	b.WriteString("\n")
 	b.WriteString("[O] Open in browser")

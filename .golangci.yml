@@ -1,39 +1,53 @@
+version: "2"
 run:
-  timeout: 3m
   tests: true
-
 linters:
-  disable-all: true
+  default: none
   enable:
     - errcheck
+    - gosec
     - govet
-    - staticcheck
+    - ineffassign
+    - misspell
     - revive
+    - staticcheck
+    - unparam
+    - unused
+  settings:
+    gosec:
+      excludes:
+        - G104
+    revive:
+      rules:
+        - name: exported
+          arguments:
+            - disableStutteringCheck
+  exclusions:
+    generated: lax
+    presets:
+      - comments
+      - common-false-positives
+      - legacy
+      - std-error-handling
+    rules:
+      - linters:
+          - errcheck
+          - gosec
+        path: _test\.go
+      - linters:
+          - revive
+        path: test/fakes/
+    paths:
+      - third_party$
+      - builtin$
+      - examples$
+formatters:
+  enable:
     - gofmt
     - goimports
-    - gosec
-    - unused
-    - unparam
-    - misspell
-    - ineffassign
-    - typecheck
-
-linters-settings:
-  revive:
-    rules:
-      - name: exported
-        arguments:
-          - disableStutteringCheck
-  gosec:
-    excludes:
-      - G104   # Errors unhandled (we use errcheck)
-
-issues:
-  exclude-rules:
-    - path: _test\.go
-      linters:
-        - gosec
-        - errcheck
-    - path: test/fakes/
-      linters:
-        - revive
+  exclusions:
+    generated: lax
+    paths:
+      - third_party$
+      - builtin$
+      - examples$

@@ -12,7 +12,7 @@ func TestFingerprintIs16HexChars(t *testing.T) {
 		t.Errorf("len(fp)=%d, want 16; fp=%q", len(fp), fp)
 	}
 	for _, r := range fp {
-		if !((r >= '0' && r <= '9') || (r >= 'a' && r <= 'f')) {
+		if (r < '0' || r > '9') && (r < 'a' || r > 'f') {
 			t.Errorf("fingerprint contains non-hex char: %q", r)
 		}
 	}

@@ -78,7 +78,7 @@ func TestJSONLHandlerWithGroupReturnsHandler(t *testing.T) {
 		t.Fatal("WithGroup returned nil")
 	}
 	// Verify the returned value satisfies slog.Handler.
-	var _ slog.Handler = got
+	var _ = got
 }
 
 func timeNowForTest() time.Time {

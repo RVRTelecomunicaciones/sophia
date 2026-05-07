@@ -38,9 +38,9 @@ jobs:
       - name: golangci-lint
         uses: golangci/golangci-lint-action@v6
         with:
-          # NOTE: pinned to v1.64 to match the local .golangci.yml v1 schema.
-          # Migrating the config to v2 + bumping the action is deferred to M10.
-          version: v1.64
+          # v2 line: v1.64 binaries were built with Go 1.24 and refuse to lint
+          # Go 1.26.x code. .golangci.yml is migrated to the v2 schema.
+          version: v2.12
           args: --timeout=3m
 
   vuln:

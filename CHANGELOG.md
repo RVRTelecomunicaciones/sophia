@@ -7,7 +7,146 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-(empty — first changes after the v0.1.0 cut land here)
+Tracks the staged work for the upcoming **v0.2.0** coordinated cut-over
+with `sophia-orchestator`. The v0.2.0 tag is intentionally NOT pushed
+yet — Phase 7 (coordinated release) is the gate that simultaneously
+tags both repos. See `docs/superpowers/plans/2026-05-07-sophia-m10-wire-alignment-v0.2.0.md`.
+
+### Compatibility
+
+> **v0.2.0 is a coordinated cut-over.** Upgrade `sophia-cli` AND
+> `sophia-orchestator` together. There is **no partial-upgrade path**.
+
+- `sophia-cli v0.2.0` **requires** `sophia-orchestator v0.2.0+`.
+- `sophia-cli v0.2.0` is **incompatible** with `sophia-orchestator v0.1.x`.
+- `sophia-cli v0.1.0` is **incompatible** with `sophia-orchestator v0.2.0`.
+- A **remote** orchestrator REQUIRES `SOPHIA_API_KEY` (env) or
+  `--api-key` (flag). The cli refuses to call a remote orchestrator
+  anonymously and exits `3` with `auth required for remote orchestrator`
+  before any HTTP request.
+- A **local loopback** orchestrator (bound to `localhost`,
+  `127.0.0.0/8`, or `::1`) MAY accept anonymous calls **only if** the
+  orchestrator was started with `AllowAnonLocalhost=true` (the flag is
+  silently downgraded to `false` if the listener is bound to a
+  non-loopback interface).
+
+Migration guide: [`docs/migration/v0.1.0-to-v0.2.0.md`](docs/migration/v0.1.0-to-v0.2.0.md).
+The same guide is mirrored byte-identically in the orchestrator repo.
+
+### Wire-protocol changes (sophia-wire-v1)
+
+- **Canonical wire spec** lives at `docs/specs/sophia-wire-v1.md`
+  (mirrored byte-identically in `sophia-orchestator`; SHA256 cross-repo
+  gate enforced by the contract test suite).
+- **Health path:** `/api/v1/healthz` → **`/api/v1/health`**. No `/healthz`
+  alias on the orchestrator side (D-M10-06).
+- **Approval flow** is now **phase-scoped** (D-M10-13 Form A):
+  - `POST /api/v1/phases/{phase_id}/approve`
+  - `POST /api/v1/phases/{phase_id}/reject`
+  Phase IDs are globally unique on the orchestrator; the redundant
+  `change_id` is removed from the URL.
+- **SSE streams are per-phase** (D-M10-05): subscribe to
+  `GET /api/v1/phases/{phase_id}/events`. The legacy per-Change feed is
+  gone; the cli's new multiplexer re-subscribes to the next phase when
+  `current_phase_id` changes on the Change snapshot.
+- **SSE event ids** are ULIDs (sophia-wire-v1 §5.1) — `Last-Event-ID`
+  resume is now collision-safe.
+- **`approval.resolved` replaces `phase.approved` / `phase.rejected`**
+  with a `decision` field (`"approved" | "rejected"`).
+- **`agent.dispatched`** is the canonical event name; the cli still
+  accepts the legacy `agent.spawned` for backward-compat with prior
+  fixtures.
+- **`410 phase_terminal_no_events`**: subscribing to an SSE stream for
+  a phase that is already terminal MUST fall back to
+  `GET /api/v1/phases/{id}` for state. The cli's SSE client closes the
+  channel without burning the retry budget.
+- **`open` event** is sent first on every SSE connection (Phase 1.5
+  amendment, Optional). Clients MAY use it for fast reconnect detection.
+- **Optional `apply.*` diagnostic events** (Phase 1.5 amendment) are
+  tolerated; clients MUST forward unknown events unchanged
+  (sophia-wire-v1 §10).
+
+### Authentication
+
+- Header `X-Sophia-API-Key` is the canonical auth header (legacy
+  `X-API-Key` is accepted by the orchestrator for migration but clients
+  SHOULD use the canonical name).
+- The cli resolves the key from `--api-key` flag → `SOPHIA_API_KEY`
+  env → empty. The key value is **never logged or printed**.
+- Loopback-only orchestrators MAY allow anonymous via the orchestrator's
+  `AllowAnonLocalhost=true` flag, which is silently downgraded to
+  `false` when the listener is bound to a non-loopback address (D-M10-02).
+
+### Error envelope
+
+- All non-2xx responses now carry the canonical envelope
+  (sophia-wire-v1 §9.1): `{code, error, details?}`.
+- 13 stable error codes (sophia-wire-v1 §9.2) round-trip via
+  `errors.Is` to domain sentinels: `unauthorized`,
+  `validation_failed`, `approver_required`, `limit_too_large`,
+  `change_not_found`, `phase_not_found`, `change_already_exists`,
+  `change_already_terminal`, `phase_not_resumable`, `phase_not_gated`,
+  `gate_already_decided`, `phase_terminal_no_events`, `internal_error`.
+
+### Added
+
+- New CLI commands (Phase 4 Tasks 4.4–4.6 / D-M10-13):
+  - `sophia approve <phase-id>` — POSTs the canonical approval. The
+    M7 browser `[O]` keybinding is unchanged; either channel resolves
+    the gate (D-M10-03).
+  - `sophia reject <phase-id>` — symmetric to approve.
+  - `sophia abort <change-id>` — POSTs `/api/v1/changes/{id}/abort`.
+  Idempotency: `gate_already_decided` (approve/reject) and
+  `change_already_terminal` (abort) exit `0` with informational text.
+- `pkg/contract/` (Phase 3.6) — public Go package mirroring the wire
+  surface (route paths, event names, error codes, request/response
+  DTOs, header constants). Both repos depend on it.
+- `--api-key` persistent flag on the root command. Resolved at
+  `PersistentPreRunE`; commands that don't talk to the orchestrator
+  (`version`, `doctor`, `init`, `start`, `stop`, `help`) skip the
+  auth gate.
+- Phase 5 contract test suite under `test/contract/` with build tag
+  `contract`: 27 cross-repo wire-conformance tests covering the 9
+  Required endpoints, 4 auth modes, the SSE event taxonomy, all 13
+  error codes, and 8 CLI smoke commands. Plus a lightweight SHA256
+  cross-repo gate that runs in default `go test`.
+- `make contract` + `make test-no-workspace` Makefile targets
+  (Phase 5; D-M10-15 / D-M10-16 release blockers).
+
+### Changed
+
+- The cli's outbound HTTP client now injects `X-Sophia-API-Key` on
+  every authenticated request when a key is configured. Anonymous
+  mode (no key) omits the header entirely — "absent ≠ empty" is
+  enforced by a contract test.
+- The cli's SSE consumer (`internal/adapters/outbound/ssestream`) is a
+  per-phase client (was per-Change). The runner's observation loop is
+  a phase-stream multiplexer that re-subscribes when
+  `current_phase_id` changes on the Change snapshot.
+- `StatusError` now parses the canonical error envelope and exposes
+  `Code` / `Message` / `Details` fields. `errors.Is(err, domain.Err*)`
+  maps every wire `code` to its domain sentinel.
+- `internal/application/doctor.go` no longer probes SSE pre-run. The
+  legacy probe targeted an endpoint the orchestrator never
+  implemented; doctor now reports SSE handshake as
+  `info: deferred to first run/attach` (D-M10-07).
+
+### Removed
+
+- `internal/adapters/outbound/sseprobe/` package (D-M10-07).
+- `internal/ports/outbound/ssehandshake.go` and the `SSEProber` port.
+- The deprecated `outbound.StreamTarget.PhaseID` semantic where the
+  field was unused: it is now the authoritative subscription key.
+
+### Documentation
+
+- `docs/migration/v0.1.0-to-v0.2.0.md` — operator-facing migration
+  guide with upgrade checklist and rollback procedure (mirrored
+  byte-identically in the orchestrator repo).
+- `docs/specs/cli-orchestrator-compatibility.md` §7 — Phase 5
+  cross-repo compatibility report.
+- `test/contract/HARNESS.md` — how to run the contract suite + how to
+  extend it with a real-binary smoke (Phase 7).
 
 ---
 

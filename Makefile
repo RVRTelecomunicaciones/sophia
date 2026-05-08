@@ -14,7 +14,7 @@ LDFLAGS     := -X $(PKG)/internal/bootstrap.Version=$(VERSION) \
                -X $(PKG)/internal/bootstrap.Commit=$(COMMIT) \
                -X $(PKG)/internal/bootstrap.BuildDate=$(DATE)
 
-.PHONY: help build build-cover test vet lint coverage coverage-full test-integration clean run-doctor run-version release-check release-snapshot vuln security licenses e2e
+.PHONY: help build build-cover test vet lint coverage coverage-full test-integration clean run-doctor run-version release-check release-snapshot vuln security licenses e2e contract test-no-workspace
 
 help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS=":.*?## "}; {printf "  \033[36m%-15s\033[0m %s\n", $$1, $$2}'
@@ -38,6 +38,12 @@ coverage: ## Compute coverage for domain + application
 
 test-integration: ## Run opt-in integration tests against a real Docker daemon
 	$(GO) test -tags=integration ./test/integration/...
+
+contract: ## Phase 5 contract tests (cross-repo wire conformance — sophia-wire-v1)
+	$(GO) test -tags=contract ./test/contract/...
+
+test-no-workspace: ## D-M10-15 release-blocker gate: GOWORK=off prevents silent go.work dependency
+	GOWORK=off $(GO) test ./...
 
 clean: ## Remove build artifacts
 	rm -rf $(BIN_DIR) cover.out cover.unit.out cover.bin.out cover.merged.out coverage.html $(COVDIR)

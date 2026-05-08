@@ -366,3 +366,101 @@ authorization.
 | Open questions to resolve before Phase 3/4? | (list) |
 
 Until this block is signed, Phases 3 and 4 are NOT authorized.
+
+---
+
+## 7. Phase 5 contract gate result (2026-05-07)
+
+Phases 1.5, 3, 3.6, 3.7, 3.8, 4, and 5 have all landed. Phase 5
+(this section) records the cross-repo compatibility status as of the
+contract test run.
+
+### 7.1 SHA256 cross-repo gate (D-M10-16 release blocker #1)
+
+| Repo | path | SHA256 |
+|---|---|---|
+| sophia-cli | `docs/specs/sophia-wire-v1.md` | `097be33907771e727fa1e4e834f5afc01d8c3f212bb503b2a4f2dc00d19fd6c5` |
+| sophia-orchestator (`m10/orchestrator-wire-v1`) | `docs/specs/sophia-wire-v1.md` | `097be33907771e727fa1e4e834f5afc01d8c3f212bb503b2a4f2dc00d19fd6c5` |
+
+✅ **Hashes match.** Both repos carry byte-identical
+`sophia-wire-v1.md` mirrors. The `.sha256` files in each repo also
+match the actual file content (no stale recordings).
+
+### 7.2 Cross-repo test status
+
+| Suite | Location | Result |
+|---|---|---|
+| sophia-cli unit + integration | `make test` | 21 packages, all green; race-clean; `GOWORK=off`-clean |
+| sophia-cli contract suite | `make contract` (`-tags=contract`) | 27 tests across 9 endpoints + auth + SSE + 13 error codes + CLI smoke; race-clean |
+| sophia-orchestator unit | `make test-unit` on `m10/orchestrator-wire-v1` | 25 packages, all green; race-clean |
+
+### 7.3 Required endpoint coverage
+
+| Endpoint | cli contract test | orch unit test |
+|---|---|---|
+| `GET /api/v1/health` | `TestContract_HealthEndpoint` | `TestHealth_Public` |
+| `POST /api/v1/changes` | `TestContract_CreateAndGetChange` | `TestCreateChange_Roundtrip` |
+| `GET /api/v1/changes` | `TestContract_ListChanges_*` | `TestList_LimitTooLarge` |
+| `GET /api/v1/changes/{id}` | `TestContract_CreateAndGetChange` | router test |
+| `POST /api/v1/changes/{id}/abort` | `TestContract_AbortChange*` | router test |
+| `GET /api/v1/phases/{id}` | `TestContract_GetPhase` | router test |
+| `POST /api/v1/phases/{id}/approve` | `TestContract_ApprovePhase_*` | `TestApprove_*` |
+| `POST /api/v1/phases/{id}/reject` | `TestContract_RejectPhase_HappyPath` | `TestReject_*` |
+| `GET /api/v1/phases/{id}/events` | `TestContract_SSE_EventTypes`, `TestContract_SSE_PhaseTerminalNoEvents` | `TestSSE_StreamReceivesEvents`, `TestSSE_PhaseTerminalNoEvents` |
+
+### 7.4 Auth gate
+
+| Mode | cli test | orch test |
+|---|---|---|
+| Loopback anonymous | `TestContract_Auth_LoopbackAnonAllowed` | `TestAuth_*` (`AllowAnonLocalhost` path) |
+| Remote anonymous → 401 unauthorized | `TestContract_Auth_RemoteAnonRejected` | `TestAuth_RequiredOnProtectedEndpoints` |
+| Valid key → 200 | `TestContract_Auth_ValidKeyAccepted` | `TestAuth_AcceptsValidKey` |
+| Invalid key → 401 | `TestContract_Auth_InvalidKeyRejected` | `TestAuth_RequiredOnProtectedEndpoints` |
+| API key never logged | `TestClient_AuthHeaderOmittedWhenAnon` (absent ≠ empty) | n/a (server side) |
+
+### 7.5 SSE event compatibility
+
+| Event | cli test | orch test |
+|---|---|---|
+| `heartbeat` | parser unit tests | router test (Stream emits heartbeat) |
+| `phase.started` | `TestContract_SSE_EventTypes` | `TestRun_PhaseStartedPayloadShape` |
+| `phase.completed` | `TestContract_SSE_EventTypes` | `TestRun_PhaseCompletedPayloadShape` |
+| `phase.failed` | TUI + parser tests | `TestRun_PhaseFailedPayloadShape` |
+| `approval.required` | `TestContract_SSE_EventTypes` | router test |
+| `approval.resolved` | `TestContract_SSE_EventTypes` | `TestApprove_HappyPath` |
+| Unknown / `apply.*` tolerated | `TestContract_SSE_EventTypes`, `TestModel_TolerantOfApplyDiagnostics` | n/a (server emits) |
+| 410 phase_terminal_no_events without retry storm | `TestContract_SSE_PhaseTerminalNoEvents` | `TestSSE_PhaseTerminalNoEvents` |
+
+### 7.6 Error envelope (13 stable codes)
+
+✅ **All 13 codes round-trip.** Validated by
+`TestContract_ErrorEnvelope_AllStableCodes` (cli) and
+`TestErrorEnvelope_Shape` + per-code 4xx tests (orch).
+
+### 7.7 CLI smoke (Phase 5 scope item 8)
+
+| Command | Smoke test |
+|---|---|
+| `sophia doctor` | `TestSmoke_DoctorReportsHealthOK` |
+| `sophia run` | `TestSmoke_Run_StreamsThenFinishesDone` (full multiplexer flow) |
+| `sophia attach` (snapshot) | `TestSmoke_Attach_RetrievesSnapshot` |
+| `sophia changes` | `TestSmoke_ChangesList` |
+| `sophia status` | covered by `TestSmoke_Attach_RetrievesSnapshot` |
+| `sophia approve` | `TestSmoke_Approve_Idempotent` |
+| `sophia reject` | `TestSmoke_Reject_HappyPath` |
+| `sophia abort` | `TestSmoke_Abort_Idempotent` |
+
+### 7.8 Compatibility matrix (post-Phase 5)
+
+| cli ↔ orchestator pair | Wire | Status |
+|---|---|---|
+| cli `main` (v0.2.0-dev) ↔ orch `m10/orchestrator-wire-v1` | sophia-wire-v1 | ✅ Compatible. SHA256 match + 27 contract tests + 25 orch tests + auth + SSE + 13 error codes verified. Pre-tag, pre-merge. |
+| cli `main` ↔ orch `main` (v0.1.x) | divergent | ❌ Incompatible. v0.2.0 is a coordinated cut-over. Documented under §4.4. |
+| cli v0.1.0 ↔ orch `m10/orchestrator-wire-v1` | divergent | ❌ Incompatible. v0.2.0 server requires v0.2.0 cli. Documented under §4.4. |
+
+### 7.9 Phase 5 deviations
+
+**None.** Every Phase 5 scope item landed as authorized. The only
+deferral is the "real orchestrator binary smoke" — documented in
+`test/contract/HARNESS.md` §"Future" and intentionally out of scope
+(needs Postgres in CI; lands in Phase 7 coordinated release).

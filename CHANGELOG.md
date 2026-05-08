@@ -7,10 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-Tracks the staged work for the upcoming **v0.2.0** coordinated cut-over
-with `sophia-orchestator`. The v0.2.0 tag is intentionally NOT pushed
-yet — Phase 7 (coordinated release) is the gate that simultaneously
-tags both repos. See `docs/superpowers/plans/2026-05-07-sophia-m10-wire-alignment-v0.2.0.md`.
+(empty — first changes after the v0.2.0-rc.1 cut land here)
+
+---
+
+## [v0.2.0-rc.1] — 2026-05-08
+
+Coordinated release-candidate cut with `sophia-orchestator v0.2.0-rc.1`,
+landing the M10 wire-alignment milestone. The two repos carry
+byte-identical `docs/specs/sophia-wire-v1.md` mirrors (SHA256
+`097be33907771e727fa1e4e834f5afc01d8c3f212bb503b2a4f2dc00d19fd6c5`)
+gated by the cross-repo contract test suite.
+
+7-day soak window per D-M10-11 begins on the rc.1 tag date. Both repos
+promote to `v0.2.0` final on the same day after the soak window
+closes, conditional on the soak matrix carrying zero unresolved RED
+entries.
+
+See M10 plan
+`docs/superpowers/plans/2026-05-07-sophia-m10-wire-alignment-v0.2.0.md`
+for the full rationale and decision log (D-M10-01 through D-M10-17).
 
 ### Compatibility
 

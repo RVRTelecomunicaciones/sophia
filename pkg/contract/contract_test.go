@@ -39,18 +39,18 @@ func TestRequiredAuthHeaders(t *testing.T) {
 
 func TestRouteConstants(t *testing.T) {
 	cases := map[string]string{
-		"RouteHealth":          RouteHealth,
-		"RouteReady":           RouteReady,
-		"RouteChanges":         RouteChanges,
-		"RouteChangeByID":      RouteChangeByID,
-		"RouteChangeAbort":     RouteChangeAbort,
-		"RouteChangePhaseRun":  RouteChangePhaseRun,
-		"RoutePhaseByID":       RoutePhaseByID,
-		"RoutePhaseResume":     RoutePhaseResume,
-		"RoutePhaseApprove":    RoutePhaseApprove,
-		"RoutePhaseReject":     RoutePhaseReject,
-		"RoutePhaseBoard":      RoutePhaseBoard,
-		"RoutePhaseEvents":     RoutePhaseEvents,
+		"RouteHealth":         RouteHealth,
+		"RouteReady":          RouteReady,
+		"RouteChanges":        RouteChanges,
+		"RouteChangeByID":     RouteChangeByID,
+		"RouteChangeAbort":    RouteChangeAbort,
+		"RouteChangePhaseRun": RouteChangePhaseRun,
+		"RoutePhaseByID":      RoutePhaseByID,
+		"RoutePhaseResume":    RoutePhaseResume,
+		"RoutePhaseApprove":   RoutePhaseApprove,
+		"RoutePhaseReject":    RoutePhaseReject,
+		"RoutePhaseBoard":     RoutePhaseBoard,
+		"RoutePhaseEvents":    RoutePhaseEvents,
 	}
 	for name, val := range cases {
 		if !strings.HasPrefix(val, "/api/v1/") {

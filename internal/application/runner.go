@@ -300,25 +300,6 @@ func approvalGateFromEvent(ev domain.Event) domain.ApprovalGate {
 	return gate
 }
 
-// refreshAfterStreamEndWithSink issues a final GetChange to determine
-// terminal status. Pre-Phase-4 this was the only mid-run snapshot path;
-// the multiplexer now performs the same work inline at every phase
-// boundary. Kept for backward compatibility with the Observe() API
-// surface in case future callers want a one-shot probe.
-func (r *Runner) refreshAfterStreamEndWithSink(ctx context.Context, id domain.ChangeID, sink inbound.EventSink) (domain.ChangeStatus, error) {
-	snap, err := r.snapshotChange(ctx, id)
-	if err != nil {
-		return "", err
-	}
-	if err := sink.OnSnapshot(ctx, snap); err != nil {
-		_ = sink.OnError(ctx, err)
-	}
-	if !snap.Status.IsTerminal() {
-		return "", fmt.Errorf("stream ended before terminal status (current=%q)", snap.Status)
-	}
-	return snap.Status, nil
-}
-
 // finishWithSink emits OnComplete to the given sink and maps the terminal
 // status to the spec §2.3 ExitError code.
 func (r *Runner) finishWithSink(ctx context.Context, res RunResult, st domain.ChangeStatus, sink inbound.EventSink) (RunResult, error) {

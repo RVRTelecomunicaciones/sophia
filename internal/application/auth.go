@@ -9,7 +9,7 @@ import (
 
 // EnvAPIKey is the env var name for the orchestrator API key.
 // sophia-wire-v1 §3.1 + Phase 4 Task 4.2.
-const EnvAPIKey = "SOPHIA_API_KEY"
+const EnvAPIKey = "SOPHIA_API_KEY" // #nosec G101 -- env var NAME, not a credential value
 
 // APIKeyResolver resolves the orchestrator API key from one of:
 //  1. an explicit Flag value (e.g. `--api-key`),

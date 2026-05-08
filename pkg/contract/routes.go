@@ -13,10 +13,10 @@ const (
 	RouteReady  = "/api/v1/ready"
 
 	// Changes (authenticated unless anon-loopback, sophia-wire-v1 §4.2).
-	RouteChanges          = "/api/v1/changes"
-	RouteChangeByID       = "/api/v1/changes/{change_id}"
-	RouteChangeAbort      = "/api/v1/changes/{change_id}/abort"
-	RouteChangePhaseRun   = "/api/v1/changes/{change_id}/phases/{phase_type}/run"
+	RouteChanges        = "/api/v1/changes"
+	RouteChangeByID     = "/api/v1/changes/{change_id}"
+	RouteChangeAbort    = "/api/v1/changes/{change_id}/abort"
+	RouteChangePhaseRun = "/api/v1/changes/{change_id}/phases/{phase_type}/run"
 
 	// Phases — phase-scoped per D-M10-13 Form A (sophia-wire-v1 §4.3).
 	RoutePhaseByID    = "/api/v1/phases/{phase_id}"

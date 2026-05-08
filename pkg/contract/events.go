@@ -14,20 +14,20 @@ package contract
 // "unknown event type" log noise.
 const (
 	// Required events.
-	EventHeartbeat         = "heartbeat"
-	EventPhaseStarted      = "phase.started"
-	EventPhaseCompleted    = "phase.completed"
-	EventPhaseFailed       = "phase.failed"
-	EventApprovalRequired  = "approval.required"
-	EventApprovalResolved  = "approval.resolved"
+	EventHeartbeat        = "heartbeat"
+	EventPhaseStarted     = "phase.started"
+	EventPhaseCompleted   = "phase.completed"
+	EventPhaseFailed      = "phase.failed"
+	EventApprovalRequired = "approval.required"
+	EventApprovalResolved = "approval.resolved"
 
 	// Optional task / agent events.
-	EventTaskCreated      = "task.created"
-	EventTaskStarted      = "task.started"
-	EventTaskCompleted    = "task.completed"
-	EventTaskFailed       = "task.failed"
-	EventAgentDispatched  = "agent.dispatched"
-	EventAgentCompleted   = "agent.completed"
+	EventTaskCreated     = "task.created"
+	EventTaskStarted     = "task.started"
+	EventTaskCompleted   = "task.completed"
+	EventTaskFailed      = "task.failed"
+	EventAgentDispatched = "agent.dispatched"
+	EventAgentCompleted  = "agent.completed"
 
 	// Optional connection-live signal (server emits at SSE stream open).
 	EventOpen = "open"
@@ -96,22 +96,22 @@ func IsKnownEvent(eventType string) bool {
 // PhaseStatus values used in PhaseDTO and on phase-related events.
 // See sophia-wire-v1 §6.1.
 const (
-	PhaseStatusPending  = "pending"
-	PhaseStatusRunning  = "running"
-	PhaseStatusBlocked  = "blocked"
-	PhaseStatusDone     = "done"
-	PhaseStatusFailed   = "failed"
+	PhaseStatusPending = "pending"
+	PhaseStatusRunning = "running"
+	PhaseStatusBlocked = "blocked"
+	PhaseStatusDone    = "done"
+	PhaseStatusFailed  = "failed"
 )
 
 // ChangeStatus values used in ChangeResponse.
 // See sophia-wire-v1 §6.1.
 const (
-	ChangeStatusPending  = "pending"
-	ChangeStatusRunning  = "running"
-	ChangeStatusDone     = "done"
-	ChangeStatusBlocked  = "blocked"
-	ChangeStatusFailed   = "failed"
-	ChangeStatusAborted  = "aborted"
+	ChangeStatusPending = "pending"
+	ChangeStatusRunning = "running"
+	ChangeStatusDone    = "done"
+	ChangeStatusBlocked = "blocked"
+	ChangeStatusFailed  = "failed"
+	ChangeStatusAborted = "aborted"
 )
 
 // Decision values used in ApprovalResolvedPayload.

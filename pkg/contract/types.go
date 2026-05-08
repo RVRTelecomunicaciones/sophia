@@ -32,25 +32,25 @@ type PhaseDTO struct {
 // PhaseResponse is the JSON shape returned by GET /api/v1/phases/{id}.
 // See sophia-wire-v1 §6.2.
 type PhaseResponse struct {
-	PhaseID        string    `json:"phase_id"`
-	ChangeID       string    `json:"change_id"`
-	PhaseType      string    `json:"phase_type"`
-	Status         string    `json:"status"`
-	Confidence     float64   `json:"confidence,omitempty"`
-	Attempts       int       `json:"attempts,omitempty"`
-	RetryBudget    int       `json:"retry_budget,omitempty"`
-	StartedAt      time.Time `json:"started_at,omitzero"`
-	EndedAt        time.Time `json:"ended_at,omitzero"`
-	BlockedReason  string    `json:"blocked_reason,omitempty"`
+	PhaseID       string    `json:"phase_id"`
+	ChangeID      string    `json:"change_id"`
+	PhaseType     string    `json:"phase_type"`
+	Status        string    `json:"status"`
+	Confidence    float64   `json:"confidence,omitempty"`
+	Attempts      int       `json:"attempts,omitempty"`
+	RetryBudget   int       `json:"retry_budget,omitempty"`
+	StartedAt     time.Time `json:"started_at,omitzero"`
+	EndedAt       time.Time `json:"ended_at,omitzero"`
+	BlockedReason string    `json:"blocked_reason,omitempty"`
 }
 
 // BoardResponse is the JSON shape returned by GET /api/v1/phases/{id}/board.
 // See sophia-wire-v1 §6.3.
 type BoardResponse struct {
-	BoardID  string         `json:"board_id"`
-	PhaseID  string         `json:"phase_id"`
-	Status   string         `json:"status"`
-	Groups   []BoardGroup   `json:"groups,omitempty"`
+	BoardID string       `json:"board_id"`
+	PhaseID string       `json:"phase_id"`
+	Status  string       `json:"status"`
+	Groups  []BoardGroup `json:"groups,omitempty"`
 }
 
 // BoardGroup is one apply-phase coordination group.
@@ -106,10 +106,10 @@ type ListChangesResponse struct {
 
 // HealthResponse is the JSON shape returned by GET /api/v1/health.
 type HealthResponse struct {
-	Status         string    `json:"status"`
-	Version        string    `json:"version,omitempty"`
-	UptimeSeconds  int64     `json:"uptime_seconds,omitempty"`
-	CheckedAt      time.Time `json:"checked_at,omitzero"`
+	Status        string    `json:"status"`
+	Version       string    `json:"version,omitempty"`
+	UptimeSeconds int64     `json:"uptime_seconds,omitempty"`
+	CheckedAt     time.Time `json:"checked_at,omitzero"`
 }
 
 // ReadyResponse is the JSON shape returned by GET /api/v1/ready.

@@ -26,11 +26,11 @@ import "net/http"
 const Version = "v1"
 
 // HeaderAPIKey is the canonical auth header name (sophia-wire-v1 §3.1).
-const HeaderAPIKey = "X-Sophia-API-Key"
+const HeaderAPIKey = "X-Sophia-API-Key" // #nosec G101 -- HTTP header NAME, not a credential value
 
 // HeaderAPIKeyLegacy is the historical fallback header. Servers MUST
 // accept both; clients SHOULD use HeaderAPIKey only.
-const HeaderAPIKeyLegacy = "X-API-Key"
+const HeaderAPIKeyLegacy = "X-API-Key" // #nosec G101 -- HTTP header NAME, not a credential value
 
 // HeaderAPIVersion is reserved for v2 (multi-version servers per §1).
 // Servers in v1 ignore this header. Reserved here so v2 clients have a

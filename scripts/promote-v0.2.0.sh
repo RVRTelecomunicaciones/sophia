@@ -47,6 +47,16 @@ if [ ! -d "$orch_repo/.git" ]; then
   exit 2
 fi
 
+# tool presence check — the hardened gates depend on these being
+# installed locally. If any is missing, fail closed (we don't want
+# silent skips on a release-blocker check).
+for tool in shasum go; do
+  if ! command -v "$tool" >/dev/null 2>&1; then
+    echo "promote: required tool '$tool' not on PATH" >&2
+    exit 2
+  fi
+done
+
 red=0
 note() { printf "  → %s\n" "$*"; }
 red() { red=$((red+1)); printf "  \033[31m✗\033[0m %s\n" "$*"; }
@@ -114,8 +124,84 @@ else
   fi
 fi
 
-# --- gate 6: tags don't already exist on remote ---
-hdr "gate 6: v0.2.0 tag absence (no double-tag)"
+# --- gate 6: cli static-analysis (gosec + golangci-lint + govulncheck) ---
+hdr "gate 6: cli static analysis (D-M10-15 verification matrix)"
+# These three caught the Day 0 fix-cycles (gosec G101 false-positives,
+# gofmt drift, unused dead code, golangci-lint v2 issues). Running them
+# pre-tag means we never push a tag that fails CI.
+if command -v gosec >/dev/null 2>&1; then
+  ( cd "$cli_repo" && gosec -severity high -quiet ./... >/tmp/promote-cli-gosec.log 2>&1 )
+  if [ $? -eq 0 ]; then green "gosec -severity high — clean"
+  else red "gosec found HIGH severity issues — see /tmp/promote-cli-gosec.log"; fi
+else
+  note "gosec not installed; install with 'go install github.com/securego/gosec/v2/cmd/gosec@latest' to gate"
+  red "gosec missing — release blocker per verification matrix"
+fi
+if command -v golangci-lint >/dev/null 2>&1; then
+  ( cd "$cli_repo" && golangci-lint run --timeout=3m ./... >/tmp/promote-cli-lint.log 2>&1 )
+  if [ $? -eq 0 ]; then green "golangci-lint run — clean"
+  else red "golangci-lint failed — see /tmp/promote-cli-lint.log"; fi
+else
+  note "golangci-lint not installed"
+  red "golangci-lint missing — release blocker per verification matrix"
+fi
+# govulncheck is gated by CI (which uses the newest 1.26.x via
+# actions/setup-go). Local machines may run an older Go with stdlib
+# vulns; treating that as a release-blocker would force every operator
+# to keep `go` perfectly current. Instead: run + log informational,
+# and rely on CI's `govulncheck` job (which is the canonical gate
+# per verification matrix) for the actual block.
+if command -v govulncheck >/dev/null 2>&1; then
+  ( cd "$cli_repo" && govulncheck ./... >/tmp/promote-cli-vuln.log 2>&1 )
+  if [ $? -eq 0 ]; then green "govulncheck — no reachable HIGH/CRITICAL"
+  else
+    note "govulncheck reports findings (informational; see /tmp/promote-cli-vuln.log)"
+    note "  → CI's govulncheck job is the canonical gate — verify it green at the to-be-tagged commit."
+  fi
+else
+  note "govulncheck not installed (install: go install golang.org/x/vuln/cmd/govulncheck@latest)"
+fi
+
+# --- gate 7: orch static analysis ---
+# Reflects the soak-matrix exemptions: orch's lint job is pre-existing
+# YELLOW (v1→v2 .golangci.yaml schema mismatch on the action), and the
+# orch's standalone gosec invocation triggers G115 (excluded in the
+# orch's own .golangci.yaml as a Go-1.22+ false-positive) and G404
+# (math/rand for jitter / backoff — non-security; pre-existing). All
+# three are out-of-scope for v0.2.0 release and tracked as
+# follow-ups. Findings are LOGGED but NOT release-blockers here.
+hdr "gate 7: orch static analysis"
+if command -v gosec >/dev/null 2>&1; then
+  ( cd "$orch_repo" && gosec -severity high -quiet ./... >/tmp/promote-orch-gosec.log 2>&1 )
+  if [ $? -eq 0 ]; then green "orch gosec — clean"
+  else
+    note "orch gosec findings (informational): G115 excluded by orch's .golangci.yaml as Go-1.22+ false-positive; G404 (math/rand) used for jitter/backoff (non-security)"
+    note "  → tracked as post-v0.2.0 follow-up; see /tmp/promote-orch-gosec.log"
+  fi
+fi
+if command -v govulncheck >/dev/null 2>&1; then
+  ( cd "$orch_repo" && govulncheck ./... >/tmp/promote-orch-vuln.log 2>&1 )
+  if [ $? -eq 0 ]; then green "orch govulncheck — clean"
+  else
+    note "orch govulncheck findings (informational; CI is the canonical gate)"
+    note "  → see /tmp/promote-orch-vuln.log"
+  fi
+fi
+note "orch golangci-lint NOT gated — pre-existing YELLOW per soak matrix; post-v0.2.0 follow-up"
+
+# --- gate 8: manual smoke checklist signed-off ---
+hdr "gate 8: manual smoke checklist (D-M10-16 #3)"
+checklist="$cli_repo/docs/release/manual-smoke-checklist.md"
+if [ ! -f "$checklist" ]; then
+  red "checklist missing at $checklist"
+elif grep -q "^| Reviewer | __________ |" "$checklist"; then
+  red "v0.2.0 sign-off block is empty in $checklist (Reviewer field still placeholder)"
+else
+  green "v0.2.0 sign-off block populated"
+fi
+
+# --- gate 9: tags don't already exist on remote ---
+hdr "gate 9: v0.2.0 tag absence (no double-tag)"
 if ( cd "$cli_repo" && git rev-parse v0.2.0 >/dev/null 2>&1 ); then
   red "cli already has local tag v0.2.0 — refusing to retag"
 else

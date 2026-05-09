@@ -1,4 +1,113 @@
-# Manual Smoke Checklist — v0.1.0
+# Manual Smoke Checklist
+
+This file accumulates per-tag smoke gates. Each release adds a new
+edition section; older sections stay as audit history.
+
+| Edition | Date | Status |
+|---|---|---|
+| [v0.2.0 edition](#v020-edition---day-7-promotion-gate) | 2026-05-15 (Day 7 target) | OPEN — gates required for `v0.2.0` final tag |
+| [v0.1.0 edition](#v010-edition) | 2026-05-07 | CLOSED — sign-off recorded |
+
+---
+
+## v0.2.0 edition — Day 7 promotion gate
+
+Gates the v0.2.0 final tag (D-M10-16 #3 release blocker). Every
+checkbox below MUST be ticked before `./scripts/promote-v0.2.0.sh
+--confirm` is run on Day 7.
+
+### A. Pre-requisites
+
+- [ ] Live `sophia-orchestator` v0.2.0-rc.1 deployed in a staging
+      environment with PostgreSQL backing store.
+- [ ] `sophia-cli` v0.2.0-rc.1 binary on the operator's PATH
+      (`sophia version` reports `0.2.0-rc.1`).
+- [ ] `SOPHIA_ORCHESTRATOR_URL` set to the staging URL.
+- [ ] `SOPHIA_API_KEY` provisioned + exported (remote staging is NOT
+      loopback so the cli will refuse anonymous).
+
+### B. v0.2.0-only operator smoke (Plan §Phase 7 Task 7.2)
+
+These 6 bullets validate the M10 wire-alignment surface against a live
+orchestrator. They are MANDATORY per D-M10-16 #3.
+
+- [ ] **B1. SSE multi-phase transition.**
+      `sophia run "smoke v0.2.0 multi-phase" --no-tui --json` — JSONL
+      output shows AT LEAST two `OnSnapshot` rows with different
+      `current_phase_id` values. The phase-stream multiplexer
+      re-subscribed cleanly between phases (D-M10-05).
+
+- [ ] **B2. `sophia approve` mid-run resolves a gate.**
+      Trigger a Change that produces an `approval.required` event.
+      In a second terminal: `sophia approve <phase-id> --approver <you>
+      -r "smoke v0.2.0"`. The first terminal's TUI banner clears
+      within ~2s; the change resumes. Exit 0.
+
+- [ ] **B3. `sophia reject` mid-run terminates the change.**
+      Trigger another approval-gated change. `sophia reject <phase-id>
+      --approver <you> -r "smoke v0.2.0 reject"`. The change goes to
+      terminal `blocked` status; `sophia status <change-id>` confirms.
+
+- [ ] **B4. `sophia abort` mid-run terminates the change.**
+      Start a long-running change. Mid-flight: `sophia abort
+      <change-id> -r "smoke v0.2.0 abort"`. Status transitions to
+      terminal. Re-run `sophia abort <change-id>` → exits 0 with
+      "already terminal (no action taken)" — idempotency proven.
+
+- [ ] **B5. Remote without `SOPHIA_API_KEY` → exit 3 friendly.**
+      `unset SOPHIA_API_KEY; sophia changes` against the remote
+      staging URL → exits 3 with `auth: auth required for remote
+      orchestrator (set SOPHIA_API_KEY or --api-key)`. NO HTTP
+      request was sent (cli refused at `PersistentPreRunE`).
+
+- [ ] **B6. Loopback without key (`AllowAnonLocalhost=true`) → 200.**
+      Start a local orchestrator with `HTTP.AllowAnonLocalhost=true`
+      and bind to `localhost:9080`. `unset SOPHIA_API_KEY;
+      SOPHIA_ORCHESTRATOR_URL=http://localhost:9080 sophia doctor`
+      → all checks 🟢, including the orchestrator one.
+
+### C. Cross-cutting validation
+
+- [ ] **C1. SHA256 cross-repo invariant.**
+      `shasum -a 256` of `docs/specs/sophia-wire-v1.md` is identical
+      across both repos at the to-be-tagged commit.
+
+- [ ] **C2. Local gates green** (run `./scripts/promote-v0.2.0.sh`
+      from the cli repo with no flags — all gates 🟢, dry-run mode).
+
+- [ ] **C3. CI green on both repos at the to-be-tagged commit**
+      (cli `ci.yml` + cli `release.yml` rc lineage; orch `ci.yaml`
+      with the documented YELLOW lint-job exemption per soak matrix).
+
+- [ ] **C4. Soak matrix has zero open RED entries**
+      (`docs/release/v0.2.0-soak-matrix.md` §"Open RED entries"
+      shows `(none — see "Resolved" below for fixes that landed
+      during Day N)`).
+
+### D. Sign-off
+
+| Field | Value |
+|-------|-------|
+| Reviewer | __________ |
+| Date | ____-__-__ (must be 2026-05-15 or later) |
+| Staging endpoint | __________ |
+| Findings | (list any 🟡 cells in B/C and the disposition) |
+| Tag at review | `v0.2.0-rc.1` (or higher rc.N) |
+| Decision | promote / hold / re-cut rc.N+1 |
+| Promotion command run | `./scripts/promote-v0.2.0.sh --confirm` (yes / no) |
+| Tag push authorized | `git push origin v0.2.0` (yes / no — separate sign-off) |
+
+> **Skip-policy.** If B-bullets cannot be executed because no staging
+> environment is available, the operator MUST: (a) document the gap
+> in the Findings cell with explicit reasoning, (b) cite the
+> contract suite + per-day soak matrix as the substitute oracle,
+> (c) get a second reviewer's signature acknowledging the relaxed
+> gate. This mirrors the v0.1.0 sign-off pattern (see "Sign-off" of
+> the v0.1.0 edition below).
+
+---
+
+## v0.1.0 edition
 
 This checklist gates the v0.1.0 tag push (D-M9-14). Tasks 1-11 of M9 land
 freely without it; Task 12 step 5 requires every box ticked AND a reviewer

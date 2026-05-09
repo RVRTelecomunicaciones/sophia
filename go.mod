@@ -2,7 +2,7 @@ module github.com/RVRTelecomunicaciones/sophia
 
 go 1.25.0
 
-toolchain go1.26.2
+toolchain go1.26.3
 
 require (
 	charm.land/bubbletea/v2 v2.0.6

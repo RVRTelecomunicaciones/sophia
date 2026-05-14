@@ -43,6 +43,23 @@ const (
 	EventApplyGroupFailed     = "apply.group.failed"
 	EventApplyBoardSaveFailed = "apply.board.save_failed"
 	EventApplyWorktreeError   = "apply.worktree.error"
+
+	// Optional team-lead + implement-agent + per-task lifecycle events.
+	// Mirror of sophia-orchestrator internal/ports/inbound/event_types.go
+	// — adding any new event there REQUIRES mirroring here so the CLI's
+	// IsKnownEvent recognises it (otherwise the consumer logs "unknown
+	// event type" noise on every occurrence).
+	EventApplyTeamLeadSpawned             = "apply.team_lead.spawned"
+	EventApplyImplementSpawnFailed        = "apply.implement.spawn_failed"
+	EventApplyImplementSpawnGovernorError = "apply.implement.spawn_governor_error"
+	EventApplyTaskClaimed                 = "apply.task.claimed"
+	EventApplyTaskClaimSkipped            = "apply.task.claim_skipped"
+	EventApplyTaskEscalated               = "apply.task.escalated"
+	EventApplyTaskRetry                   = "apply.task.retry"
+	EventApplyDispatchError               = "apply.dispatch.error"
+	EventApplyEnvelopeValidationFailed    = "apply.envelope.validation_failed"
+	EventRuntimeDispatchFailed            = "runtime.dispatch_failed"
+	EventGovernanceDecision               = "governance.decision"
 )
 
 // IsRequiredEvent reports whether the given event type is in the
@@ -87,7 +104,18 @@ func IsKnownEvent(eventType string) bool {
 		EventApplyGroupCompleted,
 		EventApplyGroupFailed,
 		EventApplyBoardSaveFailed,
-		EventApplyWorktreeError:
+		EventApplyWorktreeError,
+		EventApplyTeamLeadSpawned,
+		EventApplyImplementSpawnFailed,
+		EventApplyImplementSpawnGovernorError,
+		EventApplyTaskClaimed,
+		EventApplyTaskClaimSkipped,
+		EventApplyTaskEscalated,
+		EventApplyTaskRetry,
+		EventApplyDispatchError,
+		EventApplyEnvelopeValidationFailed,
+		EventRuntimeDispatchFailed,
+		EventGovernanceDecision:
 		return true
 	}
 	return false

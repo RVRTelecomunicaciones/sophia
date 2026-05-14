@@ -1,6 +1,7 @@
 package bootstrap
 
 import (
+	"crypto/rand"
 	"fmt"
 	"io"
 	"log/slog"
@@ -20,6 +21,8 @@ import (
 	"github.com/RVRTelecomunicaciones/sophia/internal/adapters/outbound/xdgpaths"
 	"github.com/RVRTelecomunicaciones/sophia/internal/adapters/outbound/yamlconfig"
 	"github.com/RVRTelecomunicaciones/sophia/internal/application"
+	"github.com/RVRTelecomunicaciones/sophia/internal/domain/trace"
+	"github.com/RVRTelecomunicaciones/sophia/internal/infrastructure/httpclient"
 	"github.com/RVRTelecomunicaciones/sophia/internal/ports/inbound"
 )
 
@@ -66,11 +69,33 @@ func New(cfg Config) (*cobra.Command, error) {
 	logger := NewLogger(cfg.LogWriter, cfg.LogLevel)
 	slog.SetDefault(logger)
 
+	// ADR-0005 P2.2b: mint the CLI-invocation Trace ONCE. trace_id is
+	// stable across every outbound HTTP/SSE call for this invocation;
+	// each call rotates a fresh span_id (HTTP) or pins a stream-lifetime
+	// span (SSE). On generation failure we proceed without a trace —
+	// observability is best-effort, never a hard dependency.
+	invocationTrace, traceErr := trace.New(rand.Reader)
+	if traceErr != nil {
+		logger.Warn("trace: failed to mint invocation trace, requests will not carry Traceparent",
+			"error", traceErr.Error())
+	} else {
+		logger.Debug("trace: invocation trace minted",
+			"trace_id", invocationTrace.TraceID,
+			"span_id", invocationTrace.SpanID,
+		)
+	}
+
 	keyResolver := cfg.APIKeyResolverOverride
 	if keyResolver == nil {
 		keyResolver = application.NewAPIKeyResolver(cfg.APIKey, os.Getenv)
 	}
 	apiKey := keyResolver.Resolve()
+
+	// Trace-aware HTTP client shared by every adapter (P2.2b). The
+	// RoundTripper rotates span_id per request under the stable
+	// invocation trace_id, so server logs can correlate the whole CLI
+	// run via trace_id and individual exchanges via span_id.
+	sharedHTTP := httpclient.New(httpclient.Config{Trace: invocationTrace})
 
 	compose := composeexec.New(composeexec.Config{})
 	git := gitcli.New(gitcli.Config{})
@@ -78,6 +103,7 @@ func New(cfg Config) (*cobra.Command, error) {
 	orch := orchestratorhttp.New(orchestratorhttp.Config{
 		BaseURL: cfg.OrchestratorURL,
 		APIKey:  apiKey,
+		HTTP:    sharedHTTP,
 	})
 
 	doctor := application.NewDoctorService(application.DoctorDeps{
@@ -116,13 +142,16 @@ func New(cfg Config) (*cobra.Command, error) {
 	})
 
 	// Per-phase SSE stream client (Phase 4 Task 4.3). The client carries
-	// the API key into every reconnect; key value is never logged.
+	// the API key into every reconnect; key value is never logged. The
+	// invocation Trace is passed so each Subscribe call pins a single
+	// stream-lifetime span on every reconnect (P2.2b).
 	stream := ssestream.New(ssestream.Config{
 		BaseURL:    cfg.OrchestratorURL,
 		Backoff:    ssestream.BackoffConfig{Min: time.Second, Max: 30 * time.Second},
 		MaxRetries: ssestream.DefaultMaxRetries,
 		Heartbeat:  ssestream.DefaultHeartbeat,
 		APIKey:     apiKey,
+		Trace:      invocationTrace,
 	})
 
 	browser := osbrowser.New(osbrowser.Config{})

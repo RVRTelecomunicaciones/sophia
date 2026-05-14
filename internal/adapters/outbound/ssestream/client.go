@@ -2,8 +2,10 @@ package ssestream
 
 import (
 	"context"
+	"crypto/rand"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"strings"
 	"sync"
@@ -14,8 +16,17 @@ import (
 	"github.com/RVRTelecomunicaciones/sophia/pkg/contract"
 
 	"github.com/RVRTelecomunicaciones/sophia/internal/domain"
+	"github.com/RVRTelecomunicaciones/sophia/internal/domain/trace"
+	"github.com/RVRTelecomunicaciones/sophia/internal/infrastructure/httpclient"
 	"github.com/RVRTelecomunicaciones/sophia/internal/ports/outbound"
 )
+
+// newTraceTransport is the package-local alias for the shared traceparent
+// transport — kept here so the default-client construction path doesn't
+// import httpclient at every call site.
+func newTraceTransport(base http.RoundTripper, t trace.Trace, randSrc io.Reader) http.RoundTripper {
+	return httpclient.WrapTransport(base, t, randSrc)
+}
 
 // DefaultStreamPath is the URL template for the SSE event stream. The single
 // %s is replaced with the PhaseID string. sophia-wire-v1 §4.3 + D-M10-05:
@@ -49,6 +60,14 @@ type Config struct {
 	// Empty key = anonymous; bootstrap MUST only allow this when the
 	// orchestrator URL is loopback (D-M10-02). MUST NOT be logged.
 	APIKey string
+	// Trace is the CLI-invocation top-level Trace (ADR-0005 P2.2b). When
+	// non-zero, Subscribe mints ONE child span at start and pins it on
+	// every request (including reconnects), so the entire stream lifetime
+	// shares a single span_id.
+	Trace trace.Trace
+	// RandSource injects randomness for span_id minting. Defaults to
+	// crypto/rand.Reader.
+	RandSource io.Reader
 }
 
 // Client implements outbound.EventStreamClient by connecting to the
@@ -69,6 +88,8 @@ type Client struct {
 	heartbeat  time.Duration
 	clock      Clock
 	apiKey     string
+	trace      trace.Trace
+	rand       io.Reader
 }
 
 // New constructs a Client from cfg. All zero fields get sensible defaults.
@@ -83,9 +104,10 @@ func New(cfg Config) *Client {
 	hc := cfg.HTTP
 	if hc == nil {
 		// Zero timeout = no timeout, which is required for long-lived SSE
-		// streams. We cannot use httpclient.New because that applies a 5 s
-		// default when Timeout is 0.
-		hc = &http.Client{}
+		// streams. The transport is wrapped with the trace-emitting
+		// RoundTripper inline so reconnect attempts carry the pinned
+		// stream-span Traceparent (set by Subscribe via context).
+		hc = &http.Client{Transport: newTraceTransport(http.DefaultTransport, cfg.Trace, cfg.RandSource)}
 	}
 	heartbeat := cfg.Heartbeat
 	if heartbeat <= 0 {
@@ -94,6 +116,10 @@ func New(cfg Config) *Client {
 	clk := cfg.Clock
 	if clk == nil {
 		clk = realClock{}
+	}
+	randSrc := cfg.RandSource
+	if randSrc == nil {
+		randSrc = rand.Reader
 	}
 	return &Client{
 		base:       strings.TrimRight(cfg.BaseURL, "/"),
@@ -104,6 +130,8 @@ func New(cfg Config) *Client {
 		heartbeat:  heartbeat,
 		clock:      clk,
 		apiKey:     cfg.APIKey,
+		trace:      cfg.Trace,
+		rand:       randSrc,
 	}
 }
 
@@ -125,6 +153,19 @@ func (c *Client) Subscribe(ctx context.Context, target outbound.StreamTarget, op
 		return nil, nil, errors.New("ssestream: target.PhaseID required")
 	}
 	url := c.buildURL(target)
+
+	// Pin a single child span on this context so EVERY HTTP attempt in
+	// the run loop (initial GET + all reconnects) carries the same
+	// trace_id+span_id. SSE spec (P2.2b): "the stream uses a single span
+	// for its entire lifetime — don't rotate per event". When trace minting
+	// fails (rand exhausted) we fall through with the original ctx; the
+	// httpclient transport will still tag the request with a fresh span
+	// from the CLI-invocation trace_id.
+	if c.trace.TraceID != "" {
+		if streamSpan, err := c.trace.WithNewSpan(c.rand); err == nil {
+			ctx = trace.NewContext(ctx, streamSpan)
+		}
+	}
 
 	out := make(chan domain.Event, 16)
 	ctx, cancel := context.WithCancel(ctx)

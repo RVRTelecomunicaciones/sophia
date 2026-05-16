@@ -89,6 +89,25 @@ type AbortChangeRequest struct {
 	Reason string `json:"reason,omitempty"`
 }
 
+// RunPhaseRequest is the JSON request body for POST
+// /api/v1/changes/{id}/phases/{type}/run. TaskDescription becomes the
+// `# Task` section of the prompt the dispatcher sends to the agent —
+// without it, exploration phases tend to return NEEDS_CONTEXT.
+type RunPhaseRequest struct {
+	TaskDescription string `json:"task_description,omitempty"`
+}
+
+// RunPhaseResponse is the JSON shape returned by POST
+// /api/v1/changes/{id}/phases/{type}/run. The orch returns 202
+// Accepted with this body so the caller can immediately subscribe
+// to EventsURL while the phase runs asynchronously.
+type RunPhaseResponse struct {
+	PhaseID   string    `json:"phase_id"`
+	Status    string    `json:"status"`
+	EventsURL string    `json:"events_url"`
+	StartedAt time.Time `json:"started_at,omitzero"`
+}
+
 // ApprovalDecisionRequest is the JSON request body for both
 // POST /api/v1/phases/{id}/approve and POST /api/v1/phases/{id}/reject.
 type ApprovalDecisionRequest struct {

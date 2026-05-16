@@ -17,6 +17,7 @@ type FakeOrchestrator struct {
 	AbortErr            error
 	ApproveErr          error
 	RejectErr           error
+	RunPhaseErr         error
 	GetBlockUntilCancel bool
 	TickHook            func(*domain.Change)
 	OnListChanges       func(outbound.ListChangesFilter)
@@ -24,6 +25,7 @@ type FakeOrchestrator struct {
 	OnAbort             func(domain.ChangeID, outbound.AbortChangeInput)
 	OnApprove           func(string, outbound.ApprovalDecisionInput)
 	OnReject            func(string, outbound.ApprovalDecisionInput)
+	OnRunPhase          func(domain.ChangeID, string, outbound.RunPhaseInput)
 	changes             map[domain.ChangeID]*domain.Change
 	nextID              int
 }
@@ -143,6 +145,32 @@ func (f *FakeOrchestrator) RejectPhase(_ context.Context, phaseID string, in out
 		f.OnReject(phaseID, in)
 	}
 	return f.RejectErr
+}
+
+// RunPhase satisfies the OrchestratorClient.RunPhase method. The fake
+// returns the change's current_phase_id (already populated by
+// CreateChange to mirror the orch's init-phase auto-start). Tests that
+// need a specific phase_id mutate the change via MutateChange before
+// invoking RunPhase. Errors are surfaced via RunPhaseErr; the OnRunPhase
+// hook lets tests assert what task description was passed.
+func (f *FakeOrchestrator) RunPhase(_ context.Context, id domain.ChangeID, phaseType string, in outbound.RunPhaseInput) (*outbound.RunPhaseResult, error) {
+	if f.OnRunPhase != nil {
+		f.OnRunPhase(id, phaseType, in)
+	}
+	if f.RunPhaseErr != nil {
+		return nil, f.RunPhaseErr
+	}
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	c, ok := f.changes[id]
+	if !ok {
+		return nil, domain.ErrChangeNotFound
+	}
+	return &outbound.RunPhaseResult{
+		PhaseID:   c.CurrentPhaseID,
+		Status:    "running",
+		EventsURL: "/api/v1/phases/" + c.CurrentPhaseID + "/events",
+	}, nil
 }
 
 func (f *FakeOrchestrator) ListChanges(_ context.Context, filter outbound.ListChangesFilter) ([]*domain.Change, error) {

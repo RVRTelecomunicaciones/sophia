@@ -124,6 +124,28 @@ func (r *Runner) Run(ctx context.Context, in RunInput) (RunResult, error) {
 
 	if created.Status.IsTerminal() {
 		res.FinalStatus = created.Status
+		return r.Observe(ctx, res, r.deps.Sink)
+	}
+
+	// Kick off the first SDD phase (explore) so the operator gets a
+	// real cycle from a single `sophia run "..."` invocation. Before
+	// this, run only created the change and the observer immediately
+	// failed with "snapshot has no current_phase_id" because nothing
+	// started a phase. The message becomes the task description for
+	// the explore prompt.
+	//
+	// Failures here are surfaced as ExitError(3) — they're not the
+	// observer's fault and there's nothing to observe if the phase
+	// never started.
+	if _, err := r.deps.Orch.RunPhase(ctx, created.ID, "explore", outbound.RunPhaseInput{
+		TaskDescription: in.Message,
+	}); err != nil {
+		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+			_ = r.deps.Sink.OnError(context.WithoutCancel(ctx), err)
+			return res, &ExitError{Code: 4, Err: err}
+		}
+		_ = r.deps.Sink.OnError(ctx, err)
+		return res, &ExitError{Code: 3, Err: fmt.Errorf("run: trigger explore: %w", err)}
 	}
 
 	return r.Observe(ctx, res, r.deps.Sink)

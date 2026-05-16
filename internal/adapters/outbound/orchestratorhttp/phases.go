@@ -13,6 +13,41 @@ import (
 	"github.com/RVRTelecomunicaciones/sophia/internal/ports/outbound"
 )
 
+// RunPhase POSTs /api/v1/changes/{id}/phases/{type}/run with the
+// task description. Implements outbound.OrchestratorClient.RunPhase.
+// Returns the phase_id + events_url so the caller (Runner.Run) can
+// subscribe to SSE immediately.
+func (c *Client) RunPhase(ctx context.Context, id domain.ChangeID, phaseType string, in outbound.RunPhaseInput) (*outbound.RunPhaseResult, error) {
+	if id.IsZero() {
+		return nil, fmt.Errorf("run phase: empty change id")
+	}
+	if phaseType == "" {
+		return nil, fmt.Errorf("run phase: empty phase type")
+	}
+	body, err := json.Marshal(contract.RunPhaseRequest{TaskDescription: in.TaskDescription})
+	if err != nil {
+		return nil, fmt.Errorf("run phase: marshal: %w", err)
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost,
+		c.base+contract.ChangePhaseRunPath(string(id), phaseType), bytes.NewReader(body))
+	if err != nil {
+		return nil, fmt.Errorf("run phase: build request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "application/json")
+	c.applyAuth(req)
+
+	var resp contract.RunPhaseResponse
+	if err := c.doJSON(req, &resp); err != nil {
+		return nil, fmt.Errorf("run phase: %w", err)
+	}
+	return &outbound.RunPhaseResult{
+		PhaseID:   resp.PhaseID,
+		Status:    resp.Status,
+		EventsURL: resp.EventsURL,
+	}, nil
+}
+
 // AbortChange POSTs /api/v1/changes/{id}/abort with {reason?}.
 // Implements outbound.OrchestratorClient.AbortChange.
 func (c *Client) AbortChange(ctx context.Context, id domain.ChangeID, in outbound.AbortChangeInput) error {

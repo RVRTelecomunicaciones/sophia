@@ -32,6 +32,20 @@ type AbortChangeInput struct {
 	Reason string
 }
 
+// PhaseSnapshot mirrors the orch's GET /api/v1/phases/{id} response
+// subset that the CLI cares about. Used as a fallback signal for the
+// run observer when SSE delivery races against a fast-completing phase
+// (the orch returns 410 phase_terminal_no_events to a late subscriber,
+// the CLI never sees phase.completed on the wire, but the phase's
+// terminal status is still readable via this endpoint).
+type PhaseSnapshot struct {
+	ID         string
+	ChangeID   string
+	PhaseType  string
+	Status     string // lowercase orch enum: running|blocked|done|done_with_concerns|...
+	Confidence float64
+}
+
 // RunPhaseInput is the body of POST /changes/{id}/phases/{type}/run.
 type RunPhaseInput struct {
 	TaskDescription string
@@ -63,6 +77,13 @@ type OrchestratorClient interface {
 	// subscribe to SSE via the returned EventsURL while the phase
 	// executes asynchronously.
 	RunPhase(ctx context.Context, changeID domain.ChangeID, phaseType string, in RunPhaseInput) (*RunPhaseResult, error)
+
+	// GetPhase fetches the current snapshot of a phase. Wraps GET
+	// /api/v1/phases/{id}. Used by the run observer as a fallback to
+	// determine the terminal status of a phase that completed faster
+	// than the SSE subscription could deliver phase.completed (the orch
+	// returns 410 phase_terminal_no_events to a late subscriber).
+	GetPhase(ctx context.Context, phaseID string) (*PhaseSnapshot, error)
 
 	// ApprovePhase resolves an approval gate as approved
 	// (sophia-wire-v1 §4.3 / §8). 409 gate_already_decided is

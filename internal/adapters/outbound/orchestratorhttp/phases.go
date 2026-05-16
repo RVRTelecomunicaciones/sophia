@@ -13,6 +13,33 @@ import (
 	"github.com/RVRTelecomunicaciones/sophia/internal/ports/outbound"
 )
 
+// GetPhase GETs /api/v1/phases/{id} and returns the subset of the
+// response the CLI needs. Implements outbound.OrchestratorClient.GetPhase.
+func (c *Client) GetPhase(ctx context.Context, phaseID string) (*outbound.PhaseSnapshot, error) {
+	if phaseID == "" {
+		return nil, fmt.Errorf("get phase: empty phase id")
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet,
+		c.base+contract.PhasePath(phaseID), nil)
+	if err != nil {
+		return nil, fmt.Errorf("get phase: build request: %w", err)
+	}
+	req.Header.Set("Accept", "application/json")
+	c.applyAuth(req)
+
+	var resp contract.PhaseResponse
+	if err := c.doJSON(req, &resp); err != nil {
+		return nil, fmt.Errorf("get phase: %w", err)
+	}
+	return &outbound.PhaseSnapshot{
+		ID:         resp.PhaseID,
+		ChangeID:   resp.ChangeID,
+		PhaseType:  resp.PhaseType,
+		Status:     resp.Status,
+		Confidence: resp.Confidence,
+	}, nil
+}
+
 // RunPhase POSTs /api/v1/changes/{id}/phases/{type}/run with the
 // task description. Implements outbound.OrchestratorClient.RunPhase.
 // Returns the phase_id + events_url so the caller (Runner.Run) can

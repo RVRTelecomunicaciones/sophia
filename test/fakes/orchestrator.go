@@ -26,8 +26,12 @@ type FakeOrchestrator struct {
 	OnApprove           func(string, outbound.ApprovalDecisionInput)
 	OnReject            func(string, outbound.ApprovalDecisionInput)
 	OnRunPhase          func(domain.ChangeID, string, outbound.RunPhaseInput)
-	changes             map[domain.ChangeID]*domain.Change
-	nextID              int
+	// PhaseStatuses lets tests seed deterministic per-phase status
+	// returns for GetPhase calls. Lookup key is phase_id (string).
+	// Default when unset → status "running".
+	PhaseStatuses FakePhaseStatuses
+	changes       map[domain.ChangeID]*domain.Change
+	nextID        int
 }
 
 func NewFakeOrchestrator() *FakeOrchestrator {
@@ -145,6 +149,30 @@ func (f *FakeOrchestrator) RejectPhase(_ context.Context, phaseID string, in out
 		f.OnReject(phaseID, in)
 	}
 	return f.RejectErr
+}
+
+// PhaseStatuses lets tests pre-seed the status that GetPhase returns
+// for a given phase_id. Default per-phase status is "running".
+type FakePhaseStatuses map[string]string
+
+// GetPhase satisfies the OrchestratorClient.GetPhase method. By
+// default returns status="running" with confidence=0. Tests can
+// pre-seed terminal statuses via the PhaseStatuses map (lookup by
+// phase_id). Returns ErrChangeNotFound (the closest sentinel the
+// fake exposes) when the phase_id is unknown.
+func (f *FakeOrchestrator) GetPhase(_ context.Context, phaseID string) (*outbound.PhaseSnapshot, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	status := "running"
+	if f.PhaseStatuses != nil {
+		if s, ok := f.PhaseStatuses[phaseID]; ok {
+			status = s
+		}
+	}
+	return &outbound.PhaseSnapshot{
+		ID:     phaseID,
+		Status: status,
+	}, nil
 }
 
 // RunPhase satisfies the OrchestratorClient.RunPhase method. The fake

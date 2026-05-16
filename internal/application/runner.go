@@ -199,6 +199,14 @@ func (r *Runner) Observe(ctx context.Context, res RunResult, sink inbound.EventS
 // the next decision (advance to a new phase, or finish).
 func (r *Runner) streamWithSink(ctx context.Context, id domain.ChangeID, sink inbound.EventSink) (domain.ChangeStatus, error) {
 	currentPhase := ""
+	// lastPhaseTerminalStatus captures the envelope_status of the most
+	// recent `phase.*` terminal event observed on the SSE stream
+	// (DONE / DONE_WITH_CONCERNS / DONE_WITH_REJECTIONS / BLOCKED /
+	// NEEDS_CONTEXT / FAILED / TIMED_OUT). Used as the fallback when
+	// the stream ends, the change has NOT advanced, and no further
+	// phases are queued — interpret the last phase outcome as the
+	// run's outcome rather than erroring out.
+	lastPhaseTerminalStatus := ""
 	for {
 		if err := ctx.Err(); err != nil {
 			return "", err
@@ -241,6 +249,9 @@ func (r *Runner) streamWithSink(ctx context.Context, id domain.ChangeID, sink in
 					if !ok {
 						return nil // stream ended; outer loop refreshes
 					}
+					if ts := phaseTerminalStatusFromEvent(ev); ts != "" {
+						lastPhaseTerminalStatus = ts
+					}
 					r.dispatchEventWithSink(ctx, ev, sink)
 				}
 			}
@@ -266,8 +277,101 @@ func (r *Runner) streamWithSink(ctx context.Context, id domain.ChangeID, sink in
 			currentPhase = snap.CurrentPhaseID
 			continue
 		}
+		// The change is still "active" (multi-phase pipeline hasn't
+		// advanced to a new phase) but the SSE stream we were
+		// subscribed to ended. Two real cases:
+		//
+		//   (a) The phase we observed reached a terminal outcome
+		//       (DONE / DONE_WITH_* / BLOCKED / NEEDS_CONTEXT /
+		//       FAILED / TIMED_OUT) and nothing auto-advances the
+		//       change to the next phase. This is the common case for
+		//       `sophia run "..."` which kicks off ONE phase and
+		//       expects the run to finish with that phase's outcome.
+		//   (b) The stream dropped without a terminal event AND the
+		//       orch didn't advance. This is genuinely abnormal —
+		//       preserve the original error so the operator notices.
+		//
+		// We disambiguate via lastPhaseTerminalStatus captured from
+		// the SSE events themselves first. If that was empty (common
+		// when a fast-completing phase finished before the SSE
+		// subscription delivered any events — the orch then returns
+		// 410 phase_terminal_no_events to the late subscriber, the
+		// client sees a closed channel with no payload), fall back
+		// to a direct GET /api/v1/phases/{id} on the phase we were
+		// observing. That endpoint surfaces the orch's authoritative
+		// terminal status regardless of SSE delivery timing.
+		if mapped := mapPhaseTerminalToChange(lastPhaseTerminalStatus); mapped != "" {
+			return mapped, nil
+		}
+		if currentPhase != "" {
+			ph, phErr := r.deps.Orch.GetPhase(ctx, currentPhase)
+			if phErr == nil && ph != nil {
+				if mapped := mapPhaseLowercaseTerminalToChange(ph.Status); mapped != "" {
+					return mapped, nil
+				}
+			}
+		}
 		return "", fmt.Errorf("stream ended before terminal status (current=%q)", snap.Status)
 	}
+}
+
+// mapPhaseLowercaseTerminalToChange is the GetPhase counterpart of
+// mapPhaseTerminalToChange. The phase REST response uses the orch's
+// lowercase wire enum (done|blocked|needs_context|failed|...) rather
+// than the envelope's uppercase variant, so the mapping table differs
+// by case only.
+func mapPhaseLowercaseTerminalToChange(phaseStatus string) domain.ChangeStatus {
+	switch phaseStatus {
+	case "done", "done_with_concerns", "done_with_rejections":
+		return domain.ChangeStatusDone
+	case "blocked", "needs_context":
+		return domain.ChangeStatusBlocked
+	case "failed", "timed_out", "aborted":
+		return domain.ChangeStatusFailed
+	}
+	return ""
+}
+
+// phaseTerminalStatusFromEvent returns the envelope_status string when
+// ev is a terminal phase lifecycle event, "" otherwise. The orch emits
+// phase.completed / phase.completed_with_concerns / phase.failed /
+// phase.needs_context (sophia-wire-v1 §5.3) with payload field
+// `envelope_status` carrying the underlying envelope.Status value.
+func phaseTerminalStatusFromEvent(ev domain.Event) string {
+	switch ev.Type {
+	case "phase.completed", "phase.completed_with_concerns",
+		"phase.failed", "phase.needs_context":
+		// payload may be nil if the orch redacted it; nothing to do.
+		if ev.Payload == nil {
+			return ""
+		}
+		if s, ok := ev.Payload["envelope_status"].(string); ok && s != "" {
+			return s
+		}
+	}
+	return ""
+}
+
+// mapPhaseTerminalToChange translates an envelope.Status string into
+// the corresponding ChangeStatus for finishWithSink to map to an exit
+// code. Returns "" when the input is empty or unrecognized (caller
+// falls back to the defensive "stream ended" error).
+func mapPhaseTerminalToChange(envelopeStatus string) domain.ChangeStatus {
+	switch envelopeStatus {
+	case "DONE", "DONE_WITH_CONCERNS", "DONE_WITH_REJECTIONS":
+		// All three success-ish outcomes map to exit 0. The CLI
+		// preserves the distinction via OnEvent (the operator sees
+		// the original envelope_status in the JSON stream).
+		return domain.ChangeStatusDone
+	case "BLOCKED", "NEEDS_CONTEXT":
+		// Phase couldn't continue without operator input — surface as
+		// blocked so the exit code (1) signals "needs attention",
+		// distinct from a hard failure.
+		return domain.ChangeStatusBlocked
+	case "FAILED", "TIMED_OUT":
+		return domain.ChangeStatusFailed
+	}
+	return ""
 }
 
 // snapshotChange wraps a bounded GetChange call. Uses

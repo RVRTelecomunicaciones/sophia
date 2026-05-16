@@ -20,7 +20,7 @@ type InitializerDeps struct {
 type InitInput struct {
 	Project       string
 	BaseRef       string                   // empty ⇒ "main"
-	ArtifactStore domain.ArtifactStoreMode // empty ⇒ ArtifactStoreEngram
+	ArtifactStore domain.ArtifactStoreMode // empty ⇒ ArtifactStoreMemoryEngine
 	Force         bool
 }
 
@@ -67,7 +67,7 @@ func (i *Initializer) Run(ctx context.Context, in InitInput) (InitResult, error)
 	}
 	store := in.ArtifactStore
 	if store == "" {
-		store = domain.ArtifactStoreEngram
+		store = domain.ArtifactStoreMemoryEngine
 	}
 
 	cfg := &domain.ProjectConfig{

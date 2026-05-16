@@ -13,7 +13,7 @@ func TestProjectDTORoundTrip(t *testing.T) {
 		Version:       1,
 		Project:       "ms-cotizacion",
 		BaseRef:       "main",
-		ArtifactStore: domain.ArtifactStoreEngram,
+		ArtifactStore: domain.ArtifactStoreMemoryEngine,
 	}
 	dto := yamlconfig.ToProjectDTO(in)
 	out, err := yaml.Marshal(dto)
@@ -56,7 +56,7 @@ func TestProjectDTOArtifactStoreYAMLKey(t *testing.T) {
 		Version:       1,
 		Project:       "p",
 		BaseRef:       "main",
-		ArtifactStore: "engram",
+		ArtifactStore: "memory-engine",
 	}
 	out, err := yaml.Marshal(dto)
 	if err != nil {
@@ -65,7 +65,7 @@ func TestProjectDTOArtifactStoreYAMLKey(t *testing.T) {
 	if string(out) == "" {
 		t.Fatal("empty yaml")
 	}
-	if !contains(string(out), "artifact_store: engram") {
+	if !contains(string(out), "artifact_store: memory-engine") {
 		t.Errorf("yaml does not use artifact_store key: %s", out)
 	}
 }

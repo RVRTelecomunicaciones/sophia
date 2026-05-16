@@ -25,7 +25,7 @@ func newRunDeps(t *testing.T, sinkBuf *bytes.Buffer) (cli.Deps, *fakes.FakeOrche
 	uc := fakes.NewFakeUserConfigStore()
 
 	_ = pc.Write(context.Background(), "/repo/.sophia.yaml", &domain.ProjectConfig{
-		Project: "ms-cotizacion", BaseRef: "main", ArtifactStore: domain.ArtifactStoreEngram,
+		Project: "ms-cotizacion", BaseRef: "main", ArtifactStore: domain.ArtifactStoreMemoryEngine,
 	})
 
 	resolver := application.NewConfigResolver(application.ConfigResolverDeps{

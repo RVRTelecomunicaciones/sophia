@@ -15,13 +15,13 @@ func TestCreateRequestJSONFieldsAreSnakeCase(t *testing.T) {
 		Name:              "test",
 		Project:           "p",
 		BaseRef:           "main",
-		ArtifactStoreMode: "engram",
+		ArtifactStoreMode: "memory-engine",
 	}
 	b, err := json.Marshal(r)
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{`"name":"test"`, `"project":"p"`, `"base_ref":"main"`, `"artifact_store_mode":"engram"`} {
+	for _, want := range []string{`"name":"test"`, `"project":"p"`, `"base_ref":"main"`, `"artifact_store_mode":"memory-engine"`} {
 		if !strings.Contains(string(b), want) {
 			t.Errorf("missing %q in %s", want, b)
 		}
@@ -34,7 +34,7 @@ func TestChangeResponseDecodes(t *testing.T) {
 		"name":"test",
 		"project":"p",
 		"base_ref":"main",
-		"artifact_store_mode":"engram",
+		"artifact_store_mode":"memory-engine",
 		"status":"running",
 		"current_phase_id":"phase-1",
 		"phases":[

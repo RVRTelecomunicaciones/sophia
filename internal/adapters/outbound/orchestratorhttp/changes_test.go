@@ -32,7 +32,7 @@ func TestCreateChangePostsBodyAndDecodes(t *testing.T) {
 		if err := json.NewDecoder(r.Body).Decode(&got); err != nil {
 			t.Fatal(err)
 		}
-		if got.Name != "msg" || got.Project != "p" || got.BaseRef != "main" || got.ArtifactStoreMode != "engram" {
+		if got.Name != "msg" || got.Project != "p" || got.BaseRef != "main" || got.ArtifactStoreMode != "memory-engine" {
 			t.Errorf("body = %+v", got)
 		}
 		w.Header().Set("Content-Type", "application/json")
@@ -43,7 +43,7 @@ func TestCreateChangePostsBodyAndDecodes(t *testing.T) {
 
 	c := orchestratorhttp.New(orchestratorhttp.Config{BaseURL: srv.URL})
 	got, err := c.CreateChange(context.Background(), outbound.CreateChangeInput{
-		Name: "msg", Project: "p", BaseRef: "main", ArtifactStoreMode: "engram",
+		Name: "msg", Project: "p", BaseRef: "main", ArtifactStoreMode: "memory-engine",
 	})
 	if err != nil {
 		t.Fatal(err)

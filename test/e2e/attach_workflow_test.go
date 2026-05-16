@@ -80,7 +80,7 @@ func TestSmokeAttachWorkflow(t *testing.T) {
 	if out, err := exec.Command("git", "-C", tmp, "init", "-q").CombinedOutput(); err != nil {
 		t.Fatalf("git init: %v\n%s", err, out)
 	}
-	yaml := []byte("version: 1\nproject: p\nbase_ref: main\nartifact_store: engram\n")
+	yaml := []byte("version: 1\nproject: p\nbase_ref: main\nartifact_store: memory-engine\n")
 	if err := os.WriteFile(filepath.Join(tmp, ".sophia.yaml"), yaml, 0o644); err != nil {
 		t.Fatal(err)
 	}

@@ -27,7 +27,7 @@ func TestInitWritesAtRepoRoot(t *testing.T) {
 	res, err := init.Run(context.Background(), application.InitInput{
 		Project:       "ms-cotizacion",
 		BaseRef:       "main",
-		ArtifactStore: domain.ArtifactStoreEngram,
+		ArtifactStore: domain.ArtifactStoreMemoryEngine,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -90,7 +90,7 @@ func TestInitDefaultsBaseRefAndArtifactStore(t *testing.T) {
 	if got.BaseRef != "main" {
 		t.Errorf("BaseRef = %q", got.BaseRef)
 	}
-	if got.ArtifactStore != domain.ArtifactStoreEngram {
+	if got.ArtifactStore != domain.ArtifactStoreMemoryEngine {
 		t.Errorf("ArtifactStore = %q", got.ArtifactStore)
 	}
 	if got.Version != 1 {

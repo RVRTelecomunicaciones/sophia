@@ -55,7 +55,7 @@ func TestMultiplexer_ResubscribesOnPhaseSwitch(t *testing.T) {
 	}
 
 	res, err := r.Run(context.Background(), application.RunInput{
-		Project: "p", Message: "msg", BaseRef: "main", ArtifactStore: domain.ArtifactStoreEngram,
+		Project: "p", Message: "msg", BaseRef: "main", ArtifactStore: domain.ArtifactStoreMemoryEngine,
 	})
 	if err != nil {
 		t.Fatal(err)

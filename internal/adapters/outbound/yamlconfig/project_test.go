@@ -23,7 +23,7 @@ func TestProjectStoreWriteThenRead(t *testing.T) {
 		Version:       1,
 		Project:       "ms-cotizacion",
 		BaseRef:       "main",
-		ArtifactStore: domain.ArtifactStoreEngram,
+		ArtifactStore: domain.ArtifactStoreMemoryEngine,
 	}
 	path := "/repo/.sophia.yaml"
 	if err := s.Write(context.Background(), path, cfg); err != nil {
@@ -33,7 +33,7 @@ func TestProjectStoreWriteThenRead(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got.Project != "ms-cotizacion" || got.ArtifactStore != domain.ArtifactStoreEngram {
+	if got.Project != "ms-cotizacion" || got.ArtifactStore != domain.ArtifactStoreMemoryEngine {
 		t.Errorf("round-trip lost: %+v", got)
 	}
 }
@@ -82,7 +82,7 @@ func TestProjectStoreReadRejectsOversizedFile(t *testing.T) {
 
 func TestProjectStoreFindWalksAncestors(t *testing.T) {
 	fs := afero.NewMemMapFs()
-	cfg := &domain.ProjectConfig{Version: 1, Project: "p", BaseRef: "main", ArtifactStore: domain.ArtifactStoreEngram}
+	cfg := &domain.ProjectConfig{Version: 1, Project: "p", BaseRef: "main", ArtifactStore: domain.ArtifactStoreMemoryEngine}
 	s := yamlconfig.NewProjectStore(yamlconfig.ProjectConfig{FS: fs})
 	if err := s.Write(context.Background(), "/repo/.sophia.yaml", cfg); err != nil {
 		t.Fatal(err)

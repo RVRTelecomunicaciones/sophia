@@ -22,7 +22,7 @@ func newChangesDeps(t *testing.T) (cli.Deps, *fakes.FakeOrchestrator) {
 	uc := fakes.NewFakeUserConfigStore()
 
 	_ = pc.Write(context.Background(), "/repo/.sophia.yaml", &domain.ProjectConfig{
-		Project: "default-proj", BaseRef: "main", ArtifactStore: domain.ArtifactStoreEngram,
+		Project: "default-proj", BaseRef: "main", ArtifactStore: domain.ArtifactStoreMemoryEngine,
 	})
 	resolver := application.NewConfigResolver(application.ConfigResolverDeps{
 		ProjectStore: pc, UserStore: uc, Git: git,

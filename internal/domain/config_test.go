@@ -8,7 +8,7 @@ import (
 
 func TestArtifactStoreModeIsValid(t *testing.T) {
 	valid := []domain.ArtifactStoreMode{
-		domain.ArtifactStoreEngram,
+		domain.ArtifactStoreMemoryEngine,
 		domain.ArtifactStoreOpenspec,
 		domain.ArtifactStoreHybrid,
 		domain.ArtifactStoreNone,

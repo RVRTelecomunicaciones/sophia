@@ -39,7 +39,7 @@ func newInitCmd(d Deps) *cobra.Command {
 	}
 	cmd.Flags().StringVar(&project, "project", "", "project slug (required)")
 	cmd.Flags().StringVar(&baseRef, "base-ref", "main", "default git ref for new Changes")
-	cmd.Flags().StringVar(&artifactStore, "artifact-store", "engram", "artifact store: engram | openspec | hybrid | none")
+	cmd.Flags().StringVar(&artifactStore, "artifact-store", "memory-engine", "artifact store: memory-engine | openspec | hybrid | none")
 	cmd.Flags().BoolVar(&force, "force", false, "overwrite an existing or invalid .sophia.yaml")
 	_ = cmd.MarkFlagRequired("project")
 	return cmd

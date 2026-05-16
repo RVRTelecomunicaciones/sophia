@@ -25,7 +25,7 @@ func newAttachDeps(t *testing.T, sinkBuf *bytes.Buffer) (cli.Deps, *fakes.FakeOr
 	uc := fakes.NewFakeUserConfigStore()
 
 	_ = pc.Write(context.Background(), "/repo/.sophia.yaml", &domain.ProjectConfig{
-		Project: "ms-x", BaseRef: "main", ArtifactStore: domain.ArtifactStoreEngram,
+		Project: "ms-x", BaseRef: "main", ArtifactStore: domain.ArtifactStoreMemoryEngine,
 	})
 
 	resolver := application.NewConfigResolver(application.ConfigResolverDeps{

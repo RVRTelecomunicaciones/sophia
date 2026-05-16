@@ -42,7 +42,7 @@ func TestContract_CreateAndGetChange(t *testing.T) {
 
 	c := orchestratorhttp.New(orchestratorhttp.Config{BaseURL: srv.URL})
 	created, err := c.CreateChange(context.Background(), outbound.CreateChangeInput{
-		Name: "feat-x", Project: "demo", BaseRef: "main", ArtifactStoreMode: "engram",
+		Name: "feat-x", Project: "demo", BaseRef: "main", ArtifactStoreMode: "memory-engine",
 	})
 	if err != nil {
 		t.Fatalf("CreateChange: %v", err)

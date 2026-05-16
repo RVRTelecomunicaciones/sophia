@@ -77,7 +77,7 @@ func TestRunnerCreatesAndConsumesSSEUntilTerminalEvent(t *testing.T) {
 		Project:       "p",
 		Message:       "msg",
 		BaseRef:       "main",
-		ArtifactStore: domain.ArtifactStoreEngram,
+		ArtifactStore: domain.ArtifactStoreMemoryEngine,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -123,7 +123,7 @@ func TestRunnerTranslatesApprovalRequiredEventToOnApprovalGate(t *testing.T) {
 	}
 
 	_, err := r.Run(context.Background(), application.RunInput{
-		Project: "p", Message: "msg", BaseRef: "main", ArtifactStore: domain.ArtifactStoreEngram,
+		Project: "p", Message: "msg", BaseRef: "main", ArtifactStore: domain.ArtifactStoreMemoryEngine,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -161,7 +161,7 @@ func TestRunnerSkipsHeartbeatEvents(t *testing.T) {
 	}
 
 	if _, err := r.Run(context.Background(), application.RunInput{
-		Project: "p", Message: "msg", BaseRef: "main", ArtifactStore: domain.ArtifactStoreEngram,
+		Project: "p", Message: "msg", BaseRef: "main", ArtifactStore: domain.ArtifactStoreMemoryEngine,
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -186,7 +186,7 @@ func TestRunnerExitCode4WhenStreamEndsBeforeTerminal(t *testing.T) {
 	}
 
 	_, err := r.Run(context.Background(), application.RunInput{
-		Project: "p", Message: "msg", BaseRef: "main", ArtifactStore: domain.ArtifactStoreEngram,
+		Project: "p", Message: "msg", BaseRef: "main", ArtifactStore: domain.ArtifactStoreMemoryEngine,
 	})
 	var exit *application.ExitError
 	if !errors.As(err, &exit) {
@@ -211,7 +211,7 @@ func TestRunnerExitCode1OnTerminalFailureViaSnapshot(t *testing.T) {
 	}
 
 	_, err := r.Run(context.Background(), application.RunInput{
-		Project: "p", Message: "msg", BaseRef: "main", ArtifactStore: domain.ArtifactStoreEngram,
+		Project: "p", Message: "msg", BaseRef: "main", ArtifactStore: domain.ArtifactStoreMemoryEngine,
 	})
 	var exit *application.ExitError
 	if !errors.As(err, &exit) {
@@ -230,7 +230,7 @@ func TestRunnerExitCode3OnCreateFailure(t *testing.T) {
 	r, _ := newRunner(orch, stream, sink)
 
 	_, err := r.Run(context.Background(), application.RunInput{
-		Project: "p", Message: "msg", BaseRef: "main", ArtifactStore: domain.ArtifactStoreEngram,
+		Project: "p", Message: "msg", BaseRef: "main", ArtifactStore: domain.ArtifactStoreMemoryEngine,
 	})
 	var exit *application.ExitError
 	if !errors.As(err, &exit) {
@@ -258,7 +258,7 @@ func TestRunnerCanceledContextReturnsExit4(t *testing.T) {
 	}()
 
 	_, err := r.Run(ctx, application.RunInput{
-		Project: "p", Message: "msg", BaseRef: "main", ArtifactStore: domain.ArtifactStoreEngram,
+		Project: "p", Message: "msg", BaseRef: "main", ArtifactStore: domain.ArtifactStoreMemoryEngine,
 	})
 	var exit *application.ExitError
 	if !errors.As(err, &exit) {
@@ -330,7 +330,7 @@ func TestRunnerCancellationFiresOnError(t *testing.T) {
 	}()
 
 	_, _ = r.Run(ctx, application.RunInput{
-		Project: "p", Message: "msg", BaseRef: "main", ArtifactStore: domain.ArtifactStoreEngram,
+		Project: "p", Message: "msg", BaseRef: "main", ArtifactStore: domain.ArtifactStoreMemoryEngine,
 	})
 	if len(sink.Errors) == 0 {
 		t.Error("expected OnError to fire on ctx cancellation")

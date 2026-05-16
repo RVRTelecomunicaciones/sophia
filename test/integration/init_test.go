@@ -48,7 +48,7 @@ func TestInitInRealRepo(t *testing.T) {
 	})
 	res, err := init.Run(context.Background(), application.InitInput{
 		Project:       "ms-cotizacion",
-		ArtifactStore: domain.ArtifactStoreEngram,
+		ArtifactStore: domain.ArtifactStoreMemoryEngine,
 	})
 	if err != nil {
 		t.Fatalf("Run: %v", err)

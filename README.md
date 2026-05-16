@@ -126,7 +126,7 @@ Lives at the repo root. Created by `sophia init`.
 version: 1
 project: my-service
 base_ref: main
-artifact_store: engram
+artifact_store: memory-engine
 ```
 
 ### XDG paths

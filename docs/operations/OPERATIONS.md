@@ -63,7 +63,7 @@ Written with mode `0600`. The directory is created with `0700` if absent.
 version: 1
 project: my-service
 base_ref: main
-artifact_store: engram   # engram | openspec | hybrid | none
+artifact_store: memory-engine   # memory-engine | openspec | hybrid | none
 ```
 
 Created by `sophia init --project <slug>`. Committed to the repo.
@@ -89,7 +89,7 @@ The key is never logged. Only "set" / "missing" is surfaced in diagnostics.
 sophia init --project my-service
 ```
 
-Writes `.sophia.yaml` at the git repo root. Use `--artifact-store openspec` to write SDD artifacts as files instead of the default engram backend.
+Writes `.sophia.yaml` at the git repo root. Use `--artifact-store openspec` to write SDD artifacts as files instead of the default memory-engine backend.
 
 ### 2. Start the local stack (optional — loopback only)
 

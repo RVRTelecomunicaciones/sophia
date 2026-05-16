@@ -130,7 +130,7 @@ setup. Tag NEVER pushes without smoke.
       says).
 - [ ] **`.sophia.yaml`** present in the working directory the smoke is run from.
       Either run `sophia init` once or hand-write the file with `version: 1`,
-      `project: <name>`, `base_ref: main`, `artifact_store: engram`.
+      `project: <name>`, `base_ref: main`, `artifact_store: memory-engine`.
 - [ ] **At least one in-progress Change** (status `running` or `blocked`).
       Easiest path: kick off a Change with `sophia run "smoke v0.1.0 in-progress"`
       and let it stop part-way (Q-detach).
@@ -220,7 +220,7 @@ setup. Tag NEVER pushes without smoke.
 
 - [ ] In a fresh git repo: `sophia init` → writes `.sophia.yaml` with
       detected `project: <repo-name>`, `base_ref: main`,
-      `artifact_store: engram`.
+      `artifact_store: memory-engine`.
 - [ ] `sophia init --force` overwrites an existing `.sophia.yaml`.
 - [ ] `sophia init` outside a git repo → exit 3 with friendly error.
 

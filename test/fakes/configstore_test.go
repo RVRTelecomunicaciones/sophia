@@ -19,7 +19,7 @@ func TestFakeUserConfigImplementsPort(t *testing.T) {
 
 func TestFakeProjectConfigRoundTrip(t *testing.T) {
 	s := fakes.NewFakeProjectConfigStore()
-	cfg := &domain.ProjectConfig{Version: 1, Project: "p", BaseRef: "main", ArtifactStore: domain.ArtifactStoreEngram}
+	cfg := &domain.ProjectConfig{Version: 1, Project: "p", BaseRef: "main", ArtifactStore: domain.ArtifactStoreMemoryEngine}
 	if err := s.Write(context.Background(), "/repo/.sophia.yaml", cfg); err != nil {
 		t.Fatal(err)
 	}
@@ -27,7 +27,7 @@ func TestFakeProjectConfigRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got.Project != "p" || got.ArtifactStore != domain.ArtifactStoreEngram {
+	if got.Project != "p" || got.ArtifactStore != domain.ArtifactStoreMemoryEngine {
 		t.Errorf("round-trip lost: %+v", got)
 	}
 }

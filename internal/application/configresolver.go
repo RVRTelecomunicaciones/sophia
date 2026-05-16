@@ -67,7 +67,7 @@ func (r *ConfigResolver) Resolve(ctx context.Context, in ResolverInput) (Resolve
 	out := ResolvedConfig{
 		OrchestratorURL: DefaultOrchestratorURL,
 		BaseRef:         DefaultBaseRef,
-		ArtifactStore:   domain.ArtifactStoreEngram,
+		ArtifactStore:   domain.ArtifactStoreMemoryEngine,
 		TimeoutSeconds:  DefaultTimeoutSeconds,
 	}
 
@@ -128,7 +128,7 @@ func (r *ConfigResolver) Resolve(ctx context.Context, in ResolverInput) (Resolve
 	if in.Flags.ArtifactStore != "" {
 		mode := domain.ArtifactStoreMode(in.Flags.ArtifactStore)
 		if !mode.IsValid() {
-			return out, fmt.Errorf("%w: artifact-store %q is not one of engram|openspec|hybrid|none",
+			return out, fmt.Errorf("%w: artifact-store %q is not one of memory-engine|openspec|hybrid|none",
 				domain.ErrConfigMissing, in.Flags.ArtifactStore)
 		}
 		out.ArtifactStore = mode

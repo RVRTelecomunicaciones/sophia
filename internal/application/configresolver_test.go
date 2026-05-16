@@ -95,7 +95,7 @@ func TestResolverDefaultsApplyLast(t *testing.T) {
 	if got.BaseRef != "main" {
 		t.Errorf("BaseRef = %q", got.BaseRef)
 	}
-	if got.ArtifactStore != domain.ArtifactStoreEngram {
+	if got.ArtifactStore != domain.ArtifactStoreMemoryEngine {
 		t.Errorf("ArtifactStore = %q", got.ArtifactStore)
 	}
 	if got.TimeoutSeconds != application.DefaultTimeoutSeconds {

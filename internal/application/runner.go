@@ -91,7 +91,7 @@ func (r *Runner) Run(ctx context.Context, in RunInput) (RunResult, error) {
 		return RunResult{}, &ExitError{Code: 3, Err: errors.New("run: event stream not wired")}
 	}
 	if in.ArtifactStore == "" {
-		in.ArtifactStore = domain.ArtifactStoreEngram
+		in.ArtifactStore = domain.ArtifactStoreMemoryEngine
 	}
 	if in.BaseRef == "" {
 		in.BaseRef = "main"

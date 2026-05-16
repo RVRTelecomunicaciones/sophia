@@ -179,7 +179,7 @@ func TestSmoke_Run_StreamsThenFinishesDone(t *testing.T) {
 	defer cancel()
 	res, err := runner.Run(ctx, application.RunInput{
 		Project: "demo", Message: "feat-x", BaseRef: "main",
-		ArtifactStore: domain.ArtifactStoreEngram,
+		ArtifactStore: domain.ArtifactStoreMemoryEngine,
 	})
 	if err != nil {
 		t.Fatalf("Run: %v", err)

@@ -81,3 +81,29 @@ func TestMapPhaseTerminalToChange(t *testing.T) {
 		})
 	}
 }
+
+// TestIsPhaseInFlight locks in which orch phase statuses the runner
+// treats as "still running, re-subscribe rather than bail" vs which
+// it treats as "really terminal, decide outcome now". The 3 in-flight
+// (pending/running/interrupted) come from the orch's PhaseStatus enum;
+// keeping the table explicit prevents regressions if anyone narrows
+// or widens the re-subscribe trigger.
+func TestIsPhaseInFlight(t *testing.T) {
+	inFlight := []string{"pending", "running", "interrupted"}
+	for _, s := range inFlight {
+		if !isPhaseInFlight(s) {
+			t.Errorf("status %q must be in-flight (re-subscribe target)", s)
+		}
+	}
+
+	terminal := []string{
+		"done", "done_with_concerns", "done_with_rejections",
+		"blocked", "needs_context", "failed", "aborted", "timed_out",
+		"", "unknown-future-value",
+	}
+	for _, s := range terminal {
+		if isPhaseInFlight(s) {
+			t.Errorf("status %q must NOT be in-flight (terminal or unrecognized)", s)
+		}
+	}
+}

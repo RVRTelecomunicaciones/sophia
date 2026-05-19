@@ -197,6 +197,20 @@ func (r *Runner) Observe(ctx context.Context, res RunResult, sink inbound.EventS
 // 410 phase_terminal_no_events from the orchestrator (sophia-wire-v1
 // §9.2) is observed as a closed channel; the snapshot path then drives
 // the next decision (advance to a new phase, or finish).
+// maxResubscribeAttempts caps how many times the run observer will
+// re-subscribe to the SAME phase after an SSE drop while the phase is
+// still running. A slow LLM call can easily outlive the upstream SSE
+// keepalive (validated 2026-05-19: gpt-5.4 on SDD prompts ~110-237s,
+// claude-opus on complex tasks 5-10min). Without re-subscription, the
+// observer bailed with "stream ended before terminal status" and the
+// CLI returned exit 4 even though the work completed fine.
+//
+// The cap exists to bound a genuine pathology: SSE handshake works
+// every time but the orch never moves the phase. After this many
+// consecutive non-terminal GetPhase results we treat it as an upstream
+// fault and surface the original error so the operator notices.
+const maxResubscribeAttempts = 12
+
 func (r *Runner) streamWithSink(ctx context.Context, id domain.ChangeID, sink inbound.EventSink) (domain.ChangeStatus, error) {
 	currentPhase := ""
 	// lastPhaseTerminalStatus captures the envelope_status of the most
@@ -207,6 +221,12 @@ func (r *Runner) streamWithSink(ctx context.Context, id domain.ChangeID, sink in
 	// phases are queued — interpret the last phase outcome as the
 	// run's outcome rather than erroring out.
 	lastPhaseTerminalStatus := ""
+	// resubscribeAttempts counts how many times we re-subscribed to
+	// THE SAME currentPhase after an SSE drop while the phase was
+	// still running. Resets to 0 when currentPhase advances. Capped
+	// by maxResubscribeAttempts to bound runaway re-subscription if
+	// the orch is misbehaving.
+	resubscribeAttempts := 0
 	for {
 		if err := ctx.Err(); err != nil {
 			return "", err
@@ -275,6 +295,9 @@ func (r *Runner) streamWithSink(ctx context.Context, id domain.ChangeID, sink in
 		}
 		if snap.CurrentPhaseID != "" && snap.CurrentPhaseID != currentPhase {
 			currentPhase = snap.CurrentPhaseID
+			// Phase advanced — reset re-subscription budget so the
+			// new phase gets a fresh allowance.
+			resubscribeAttempts = 0
 			continue
 		}
 		// The change is still "active" (multi-phase pipeline hasn't
@@ -309,10 +332,37 @@ func (r *Runner) streamWithSink(ctx context.Context, id domain.ChangeID, sink in
 				if mapped := mapPhaseLowercaseTerminalToChange(ph.Status); mapped != "" {
 					return mapped, nil
 				}
+				// Phase is NOT terminal yet (typically still "running"
+				// or "interrupted"). The SSE stream dropped before
+				// the LLM finished — common when the dispatcher call
+				// outlives the upstream stream keepalive (slow SDD
+				// prompts on opus/gpt-5 can run 2-10 minutes).
+				// Re-subscribe to the same phase rather than bailing.
+				// Capped by maxResubscribeAttempts to avoid an infinite
+				// loop if the orch is wedged.
+				if isPhaseInFlight(ph.Status) && resubscribeAttempts < maxResubscribeAttempts {
+					resubscribeAttempts++
+					_ = sink.OnError(ctx, fmt.Errorf("re-subscribing to phase %s (attempt %d/%d, phase still %s)",
+						currentPhase, resubscribeAttempts, maxResubscribeAttempts, ph.Status))
+					continue
+				}
 			}
 		}
 		return "", fmt.Errorf("stream ended before terminal status (current=%q)", snap.Status)
 	}
+}
+
+// isPhaseInFlight reports whether a GET /api/v1/phases/{id} status
+// indicates the phase is NOT terminal yet — i.e. re-subscribing to
+// SSE for it can still yield events. "interrupted" is a non-terminal
+// state in the orch's enum (a phase awaiting manual resume) but
+// counts as in-flight because the orch may resume it asynchronously.
+func isPhaseInFlight(phaseStatus string) bool {
+	switch phaseStatus {
+	case "pending", "running", "interrupted":
+		return true
+	}
+	return false
 }
 
 // mapPhaseLowercaseTerminalToChange is the GetPhase counterpart of

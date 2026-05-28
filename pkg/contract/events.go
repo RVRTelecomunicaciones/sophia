@@ -108,46 +108,55 @@ const (
 // Validation
 // =============================================================================
 
+// knownEvents is the canonical set of events recognized by IsKnownEvent.
+// Aspirational events (Section 3) are intentionally NOT in this set — orch
+// does not emit them, so the CLI treats them as unknown today.
+// EventAgentCompleted (Section 4) is also excluded as a key: its value equals
+// EventAgentEnvelopeReceived, which IS present, so no duplicate key is needed.
+var knownEvents = map[string]struct{}{
+	// Section 1: Mirrored from orch.
+	EventPhaseStarted:                     {},
+	EventPhaseCompleted:                   {},
+	EventPhaseCompletedWithConcerns:       {},
+	EventPhaseFailed:                      {},
+	EventPhaseNeedsContext:                {},
+	EventApprovalRequired:                 {},
+	EventApprovalResolved:                 {},
+	EventGovernanceDecision:               {},
+	EventAgentDispatched:                  {},
+	EventAgentEnvelopeReceived:            {},
+	EventApplyBoardCreated:                {},
+	EventApplyBoardSaveFailed:             {},
+	EventApplyWorktreeError:               {},
+	EventApplyGroupCompleted:              {},
+	EventApplyGroupFailed:                 {},
+	EventApplyGroupDegraded:               {},
+	EventApplyTeamLeadSpawned:             {},
+	EventApplyImplementSpawnFailed:        {},
+	EventApplyImplementSpawnGovernorError: {},
+	EventApplyTaskClaimed:                 {},
+	EventApplyTaskClaimSkipped:            {},
+	EventApplyTaskEscalated:               {},
+	EventApplyTaskRetry:                   {},
+	EventApplyDispatchError:               {},
+	EventApplyEnvelopeValidationFailed:    {},
+	EventRuntimeDispatchFailed:            {},
+	EventApplyMaterializeStarted:          {},
+	EventApplyMaterializeCompleted:        {},
+	EventApplyMaterializeError:            {},
+	EventMemoryArtifactPersistFailed:      {},
+
+	// Section 2: CLI-only SSE protocol events (allowlisted by wire_alignment_test.go).
+	EventHeartbeat: {},
+	EventOpen:      {},
+}
+
 // IsKnownEvent reports whether the event type is documented in
 // sophia-wire-v1 (required OR optional). Unknown event types should
 // be logged + skipped per §10.2.
 func IsKnownEvent(eventType string) bool {
-	switch eventType {
-	case EventPhaseStarted,
-		EventPhaseCompleted,
-		EventPhaseCompletedWithConcerns,
-		EventPhaseFailed,
-		EventPhaseNeedsContext,
-		EventApprovalRequired,
-		EventApprovalResolved,
-		EventGovernanceDecision,
-		EventAgentDispatched,
-		EventAgentEnvelopeReceived,
-		EventApplyBoardCreated,
-		EventApplyBoardSaveFailed,
-		EventApplyWorktreeError,
-		EventApplyGroupCompleted,
-		EventApplyGroupFailed,
-		EventApplyGroupDegraded,
-		EventApplyTeamLeadSpawned,
-		EventApplyImplementSpawnFailed,
-		EventApplyImplementSpawnGovernorError,
-		EventApplyTaskClaimed,
-		EventApplyTaskClaimSkipped,
-		EventApplyTaskEscalated,
-		EventApplyTaskRetry,
-		EventApplyDispatchError,
-		EventApplyEnvelopeValidationFailed,
-		EventRuntimeDispatchFailed,
-		EventApplyMaterializeStarted,
-		EventApplyMaterializeCompleted,
-		EventApplyMaterializeError,
-		EventMemoryArtifactPersistFailed,
-		EventHeartbeat,
-		EventOpen:
-		return true
-	}
-	return false
+	_, ok := knownEvents[eventType]
+	return ok
 }
 
 // IsRequiredEvent reports whether the given event type is in the

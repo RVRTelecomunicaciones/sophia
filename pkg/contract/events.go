@@ -1,54 +1,44 @@
 package contract
 
 // SSE event type constants for sophia-wire-v1 §5.3.
-//
-// Required events MUST be emitted by spec-conformant servers and
-// MUST be handled by spec-conformant clients. Optional events MAY
-// be emitted; clients MUST tolerate their absence and MUST NOT
-// fail on their presence.
-//
-// Phase 1.5 amendment (2026-05-07): the orch-internal extension
-// events (PhaseCompletedWithConcerns, PhaseNeedsContext,
-// AgentEnvelopeReceived) and the apply.* family are documented
-// here as Optional so that the CLI can recognize them without
-// "unknown event type" log noise.
+// Restructured per change cli-orch-event-wire-realign.
+
+// =============================================================================
+// SECTION 1: Mirrored from sophia-orchestator/internal/ports/inbound/event_types.go
+// Adding any event here REQUIRES adding the matching constant in the orch and
+// vice-versa. The wire_alignment_test.go enforces this at CI time.
+// =============================================================================
+
 const (
-	// Required events.
-	EventHeartbeat        = "heartbeat"
-	EventPhaseStarted     = "phase.started"
-	EventPhaseCompleted   = "phase.completed"
-	EventPhaseFailed      = "phase.failed"
+	// Phase lifecycle (emitted by application/phase/service.go).
+	EventPhaseStarted               = "phase.started"
+	EventPhaseCompleted             = "phase.completed"
+	EventPhaseCompletedWithConcerns = "phase.completed_with_concerns"
+	EventPhaseFailed                = "phase.failed"
+	EventPhaseNeedsContext          = "phase.needs_context"
+
+	// Approval.
 	EventApprovalRequired = "approval.required"
 	EventApprovalResolved = "approval.resolved"
 
-	// Optional task / agent events.
-	EventTaskCreated     = "task.created"
-	EventTaskStarted     = "task.started"
-	EventTaskCompleted   = "task.completed"
-	EventTaskFailed      = "task.failed"
-	EventAgentDispatched = "agent.dispatched"
-	EventAgentCompleted  = "agent.completed"
+	// Governance.
+	EventGovernanceDecision = "governance.decision"
 
-	// Optional connection-live signal (server emits at SSE stream open).
-	EventOpen = "open"
+	// Agent lifecycle.
+	EventAgentDispatched       = "agent.dispatched"
+	EventAgentEnvelopeReceived = "agent.envelope.received"
 
-	// Optional orch-internal extensions (Phase 1.5 amendment).
-	EventPhaseCompletedWithConcerns = "phase.completed_with_concerns"
-	EventPhaseNeedsContext          = "phase.needs_context"
-	EventAgentEnvelopeReceived      = "agent.envelope.received"
-
-	// Optional apply.* diagnostic family (Phase 1.5 amendment).
+	// Apply board lifecycle.
 	EventApplyBoardCreated    = "apply.board.created"
-	EventApplyGroupCompleted  = "apply.group.completed"
-	EventApplyGroupFailed     = "apply.group.failed"
 	EventApplyBoardSaveFailed = "apply.board.save_failed"
 	EventApplyWorktreeError   = "apply.worktree.error"
 
-	// Optional team-lead + implement-agent + per-task lifecycle events.
-	// Mirror of sophia-orchestrator internal/ports/inbound/event_types.go
-	// — adding any new event there REQUIRES mirroring here so the CLI's
-	// IsKnownEvent recognises it (otherwise the consumer logs "unknown
-	// event type" noise on every occurrence).
+	// Apply group lifecycle.
+	EventApplyGroupCompleted = "apply.group.completed"
+	EventApplyGroupFailed    = "apply.group.failed"
+	EventApplyGroupDegraded  = "apply.group.degraded" // NEW (BUG-30)
+
+	// Apply team-lead / implement / task lifecycle.
 	EventApplyTeamLeadSpawned             = "apply.team_lead.spawned"
 	EventApplyImplementSpawnFailed        = "apply.implement.spawn_failed"
 	EventApplyImplementSpawnGovernorError = "apply.implement.spawn_governor_error"
@@ -56,11 +46,109 @@ const (
 	EventApplyTaskClaimSkipped            = "apply.task.claim_skipped"
 	EventApplyTaskEscalated               = "apply.task.escalated"
 	EventApplyTaskRetry                   = "apply.task.retry"
-	EventApplyDispatchError               = "apply.dispatch.error"
-	EventApplyEnvelopeValidationFailed    = "apply.envelope.validation_failed"
-	EventRuntimeDispatchFailed            = "runtime.dispatch_failed"
-	EventGovernanceDecision               = "governance.decision"
+
+	// Dispatch / envelope errors.
+	EventApplyDispatchError            = "apply.dispatch.error"
+	EventApplyEnvelopeValidationFailed = "apply.envelope.validation_failed"
+	EventRuntimeDispatchFailed         = "runtime.dispatch_failed"
+
+	// Materialize (BUG-29) — NEW.
+	EventApplyMaterializeStarted   = "apply.materialize.started"
+	EventApplyMaterializeCompleted = "apply.materialize.completed"
+	EventApplyMaterializeError     = "apply.materialize.error"
+
+	// Memory integration — NEW.
+	EventMemoryArtifactPersistFailed = "memory.artifact_persist_failed"
 )
+
+// =============================================================================
+// SECTION 2: CLI-only SSE protocol events
+// These are NOT in the orch event_types.go. They live here because the CLI's
+// SSE client behavior expects them (Heartbeat keepalive, Open connection-live).
+// The wire_alignment_test.go allowlists these as "CLI-only".
+// =============================================================================
+
+const (
+	EventHeartbeat = "heartbeat"
+	EventOpen      = "open"
+)
+
+// =============================================================================
+// SECTION 3: Aspirational events from sophia-wire-v1 spec
+// The orch does NOT emit these today. The constants stay declared for
+// compile-time references in CLI code (TUI handlers reference them; those
+// dormant branches are tracked by follow-up change cli-tui-event-realign).
+// =============================================================================
+
+const (
+	// TODO(sophia-wire-v1): orch does not emit today; spec-aspirational.
+	EventTaskCreated = "task.created"
+	// TODO(sophia-wire-v1): orch does not emit today; spec-aspirational.
+	EventTaskStarted = "task.started"
+	// TODO(sophia-wire-v1): orch does not emit today; spec-aspirational.
+	EventTaskCompleted = "task.completed"
+	// TODO(sophia-wire-v1): orch does not emit today; spec-aspirational.
+	EventTaskFailed = "task.failed"
+)
+
+// =============================================================================
+// SECTION 4: Deprecated aliases
+// Kept for compile-time compat with existing TUI handlers. The follow-up
+// change cli-tui-event-realign removes these references and then deletes
+// the aliases.
+// =============================================================================
+
+const (
+	// Deprecated: orch emits "agent.envelope.received"; this alias preserves
+	// compile compat for TUI handlers pending PR cli-tui-event-realign.
+	EventAgentCompleted = EventAgentEnvelopeReceived
+)
+
+// =============================================================================
+// Validation
+// =============================================================================
+
+// IsKnownEvent reports whether the event type is documented in
+// sophia-wire-v1 (required OR optional). Unknown event types should
+// be logged + skipped per §10.2.
+func IsKnownEvent(eventType string) bool {
+	switch eventType {
+	case EventPhaseStarted,
+		EventPhaseCompleted,
+		EventPhaseCompletedWithConcerns,
+		EventPhaseFailed,
+		EventPhaseNeedsContext,
+		EventApprovalRequired,
+		EventApprovalResolved,
+		EventGovernanceDecision,
+		EventAgentDispatched,
+		EventAgentEnvelopeReceived,
+		EventApplyBoardCreated,
+		EventApplyBoardSaveFailed,
+		EventApplyWorktreeError,
+		EventApplyGroupCompleted,
+		EventApplyGroupFailed,
+		EventApplyGroupDegraded,
+		EventApplyTeamLeadSpawned,
+		EventApplyImplementSpawnFailed,
+		EventApplyImplementSpawnGovernorError,
+		EventApplyTaskClaimed,
+		EventApplyTaskClaimSkipped,
+		EventApplyTaskEscalated,
+		EventApplyTaskRetry,
+		EventApplyDispatchError,
+		EventApplyEnvelopeValidationFailed,
+		EventRuntimeDispatchFailed,
+		EventApplyMaterializeStarted,
+		EventApplyMaterializeCompleted,
+		EventApplyMaterializeError,
+		EventMemoryArtifactPersistFailed,
+		EventHeartbeat,
+		EventOpen:
+		return true
+	}
+	return false
+}
 
 // IsRequiredEvent reports whether the given event type is in the
 // required-by-spec set. Useful for clients that want to log a warning
@@ -74,48 +162,6 @@ func IsRequiredEvent(eventType string) bool {
 		EventPhaseFailed,
 		EventApprovalRequired,
 		EventApprovalResolved:
-		return true
-	}
-	return false
-}
-
-// IsKnownEvent reports whether the event type is documented in
-// sophia-wire-v1 (required OR optional). Unknown event types should
-// be logged + skipped per §10.2.
-func IsKnownEvent(eventType string) bool {
-	switch eventType {
-	case EventHeartbeat,
-		EventPhaseStarted,
-		EventPhaseCompleted,
-		EventPhaseFailed,
-		EventApprovalRequired,
-		EventApprovalResolved,
-		EventTaskCreated,
-		EventTaskStarted,
-		EventTaskCompleted,
-		EventTaskFailed,
-		EventAgentDispatched,
-		EventAgentCompleted,
-		EventOpen,
-		EventPhaseCompletedWithConcerns,
-		EventPhaseNeedsContext,
-		EventAgentEnvelopeReceived,
-		EventApplyBoardCreated,
-		EventApplyGroupCompleted,
-		EventApplyGroupFailed,
-		EventApplyBoardSaveFailed,
-		EventApplyWorktreeError,
-		EventApplyTeamLeadSpawned,
-		EventApplyImplementSpawnFailed,
-		EventApplyImplementSpawnGovernorError,
-		EventApplyTaskClaimed,
-		EventApplyTaskClaimSkipped,
-		EventApplyTaskEscalated,
-		EventApplyTaskRetry,
-		EventApplyDispatchError,
-		EventApplyEnvelopeValidationFailed,
-		EventRuntimeDispatchFailed,
-		EventGovernanceDecision:
 		return true
 	}
 	return false

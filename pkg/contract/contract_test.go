@@ -80,6 +80,8 @@ func TestPathHelpers(t *testing.T) {
 	}
 }
 
+// TestEventConstants_Required covers scenario B3: IsRequiredEvent remains a
+// switch over the 6 required events (unchanged).
 func TestEventConstants_Required(t *testing.T) {
 	required := []string{
 		EventHeartbeat,
@@ -99,10 +101,13 @@ func TestEventConstants_Required(t *testing.T) {
 	}
 }
 
+// TestEventConstants_Optional covers backward compat for the existing
+// optional-known events that are still in knownEvents post-refactor.
+// EventTaskCreated/Started/Completed/Failed and EventAgentCompleted are
+// intentionally removed from this list (they are now aspirational/aliased).
 func TestEventConstants_Optional(t *testing.T) {
 	optional := []string{
-		EventTaskCreated, EventTaskStarted, EventTaskCompleted, EventTaskFailed,
-		EventAgentDispatched, EventAgentCompleted,
+		EventAgentDispatched,
 		EventOpen,
 		EventPhaseCompletedWithConcerns, EventPhaseNeedsContext, EventAgentEnvelopeReceived,
 		EventApplyBoardCreated, EventApplyGroupCompleted, EventApplyGroupFailed,
@@ -125,6 +130,94 @@ func TestEventConstants_Unknown(t *testing.T) {
 	if IsRequiredEvent("nonexistent.foo") {
 		t.Error("IsRequiredEvent returned true for unknown event type")
 	}
+}
+
+// TestEventConstants_NewOrchEvents covers scenarios A1-A5: the 5 new
+// orchestrator runtime events are recognized by IsKnownEvent.
+func TestEventConstants_NewOrchEvents(t *testing.T) {
+	cases := []struct {
+		name  string
+		event string
+	}{
+		{"A1: apply.group.degraded", EventApplyGroupDegraded},
+		{"A2: apply.materialize.started", EventApplyMaterializeStarted},
+		{"A3: apply.materialize.completed", EventApplyMaterializeCompleted},
+		{"A4: apply.materialize.error", EventApplyMaterializeError},
+		{"A5: memory.artifact_persist_failed", EventMemoryArtifactPersistFailed},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if !IsKnownEvent(tc.event) {
+				t.Errorf("IsKnownEvent(%q) = false, want true", tc.event)
+			}
+		})
+	}
+}
+
+// TestEventConstants_BackwardCompat covers scenarios C1-C4: previously-known
+// events still return true from IsKnownEvent after the map refactor.
+func TestEventConstants_BackwardCompat(t *testing.T) {
+	cases := []struct {
+		name  string
+		event string
+	}{
+		{"C1: phase.started", "phase.started"},
+		{"C2: heartbeat (CLI-only SSE protocol)", "heartbeat"},
+		{"C3: open (CLI-only SSE protocol)", "open"},
+		{"C4: agent.envelope.received (canonical orch)", "agent.envelope.received"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if !IsKnownEvent(tc.event) {
+				t.Errorf("IsKnownEvent(%q) = false, want true", tc.event)
+			}
+		})
+	}
+}
+
+// TestEventConstants_AspirationalNotRecognized covers scenarios D1-D4 and D7:
+// aspirational EventTask* constants and the legacy "agent.completed" literal
+// are NOT in knownEvents.
+func TestEventConstants_AspirationalNotRecognized(t *testing.T) {
+	cases := []struct {
+		name  string
+		event string
+	}{
+		{"D1: task.created", "task.created"},
+		{"D2: task.started", "task.started"},
+		{"D3: task.completed", "task.completed"},
+		{"D4: task.failed", "task.failed"},
+		{"D7: agent.completed (legacy literal)", "agent.completed"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if IsKnownEvent(tc.event) {
+				t.Errorf("IsKnownEvent(%q) = true, want false (aspirational/legacy)", tc.event)
+			}
+		})
+	}
+}
+
+// TestEventAgentCompleted_IsDeprecatedAlias covers scenario D6: EventAgentCompleted
+// is a deprecated alias with value equal to the canonical orch event string.
+func TestEventAgentCompleted_IsDeprecatedAlias(t *testing.T) {
+	if EventAgentCompleted != "agent.envelope.received" {
+		t.Errorf("EventAgentCompleted = %q, want %q", EventAgentCompleted, "agent.envelope.received")
+	}
+	if EventAgentCompleted != EventAgentEnvelopeReceived {
+		t.Errorf("EventAgentCompleted (%q) != EventAgentEnvelopeReceived (%q)",
+			EventAgentCompleted, EventAgentEnvelopeReceived)
+	}
+}
+
+// TestEventConstants_AspirationalConstantsStillDeclared covers scenario D5:
+// the aspirational EventTask* constants still compile (constant exists).
+func TestEventConstants_AspirationalConstantsStillDeclared(t *testing.T) {
+	// Compile-time guarantee: these references confirm the constants are declared.
+	_ = EventTaskCreated
+	_ = EventTaskStarted
+	_ = EventTaskCompleted
+	_ = EventTaskFailed
 }
 
 func TestErrorCodes_Stable(t *testing.T) {

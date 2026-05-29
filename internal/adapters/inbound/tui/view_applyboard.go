@@ -5,23 +5,30 @@ import (
 	"strings"
 )
 
-// viewApplyBoard renders the ApplyBoard tree (groups → tasks → agents).
-// Pure: same Model → same output.
+// viewApplyBoard renders the ApplyBoard panel.
+//
+// PR-1: minimal placeholder rendering against the new model structs.
+// PR-2 redesigns this view for the full group → task → session tree layout
+// per design §6.
 func viewApplyBoard(m Model) string {
 	var b strings.Builder
 
+	board := m.ApplyBoard()
 	header := fmt.Sprintf("Sophia · Change %s · ApplyBoard · %d groups",
-		m.ChangeID(), m.ApplyBoard().GroupCount())
+		m.ChangeID(), board.GroupCount())
 	b.WriteString(pkgStyles.header.Render(header))
 	b.WriteString("\n\n")
 
-	groups := m.ApplyBoard().Groups()
-	if len(groups) == 0 {
+	groups := board.Groups()
+	if len(groups) == 0 && board.MaterializeStatus() == "" {
 		b.WriteString(pkgStyles.hint.Render("No tasks yet. Apply phase will populate this view."))
 		b.WriteString("\n\n")
 	} else {
 		for _, g := range groups {
-			b.WriteString(renderApplyGroup(g))
+			b.WriteString(renderApplyGroupPlaceholder(g))
+		}
+		if board.MaterializeStatus() != "" {
+			fmt.Fprintf(&b, "materialize %s %s\n", board.MaterializeStatus(), board.MaterializeTarget())
 		}
 	}
 
@@ -41,43 +48,56 @@ func viewApplyBoard(m Model) string {
 	return truncateToWidth(b.String(), m.Width())
 }
 
-func renderApplyGroup(g ApplyGroup) string {
+// renderApplyGroupPlaceholder renders a group with its tasks in the minimal
+// PR-1 placeholder style. PR-2 replaces this with the full tree view.
+func renderApplyGroupPlaceholder(g ApplyGroup) string {
 	var b strings.Builder
-	b.WriteString(pkgStyles.header.Render(fmt.Sprintf("▼ %s", g.ID)))
+
+	statusMarker := applyStatusIcon(g.Status)
+	b.WriteString(pkgStyles.header.Render(fmt.Sprintf("▼ %s %s", g.ID, statusMarker)))
 	b.WriteString("\n")
-	for _, a := range g.Agents {
-		b.WriteString("  ")
-		b.WriteString(renderApplyAgent(a))
-		b.WriteString("\n")
+
+	if g.TeamLeadSession.ID != "" {
+		fmt.Fprintf(&b, "  ⌘ team_lead %s\n", g.TeamLeadSession.ID)
 	}
+
 	for _, t := range g.Tasks {
-		b.WriteString("  ")
-		b.WriteString(renderApplyTask(t))
+		icon := applyStatusIcon(t.Status)
+		line := fmt.Sprintf("  %s %-12s %-10s", icon, t.ID, t.Status)
+		if t.Attempts > 0 {
+			line += fmt.Sprintf(" attempts=%d", t.Attempts)
+		}
+		b.WriteString(pkgStyles.styleFor(t.Status).Render(line))
 		b.WriteString("\n")
-		for _, a := range t.Agents {
-			b.WriteString("    ")
-			b.WriteString(renderApplyAgent(a))
-			b.WriteString("\n")
+		if t.ImplementSession.ID != "" {
+			fmt.Fprintf(&b, "    ⌁ implement %s\n", t.ImplementSession.ID)
+		}
+		if t.EscalationReason != "" {
+			fmt.Fprintf(&b, "    escalation: %s\n", t.EscalationReason)
 		}
 	}
+
+	if g.MaterializeErr != "" {
+		b.WriteString(pkgStyles.errorLine.Render(fmt.Sprintf("  materialize error: %s", g.MaterializeErr)))
+		b.WriteString("\n")
+	}
+
 	b.WriteString("\n")
 	return b.String()
 }
 
-func renderApplyTask(t ApplyTask) string {
-	icon := pkgStyles.iconFor(t.Status)
-	style := pkgStyles.styleFor(t.Status)
-	files := ""
-	if t.FilesPattern != "" {
-		files = "  " + t.FilesPattern
+// applyStatusIcon returns a visual icon for an apply status value.
+func applyStatusIcon(status string) string {
+	switch status {
+	case "running":
+		return iconRunning
+	case "completed", "done":
+		return iconDone
+	case "failed", "error":
+		return iconFailed
+	case "escalated", "degraded":
+		return iconBlocked
+	default:
+		return iconPending
 	}
-	body := fmt.Sprintf("%s %-12s %-8s%s", icon, t.ID, t.Status, files)
-	return style.Render(body)
-}
-
-func renderApplyAgent(a ApplyAgent) string {
-	icon := pkgStyles.iconFor(a.Status)
-	style := pkgStyles.styleFor(a.Status)
-	body := fmt.Sprintf("%s %-10s  %-12s  %s", icon, a.ID, a.Role, a.Status)
-	return style.Render(body)
 }

@@ -60,11 +60,11 @@ func (p stylePalette) styleFor(status string) lipgloss.Style {
 	switch status {
 	case "running":
 		return p.phaseRunning
-	case "done":
+	case "done", "completed":
 		return p.phaseDone
-	case "failed":
+	case "failed", "error":
 		return p.phaseFailed
-	case "blocked":
+	case "blocked", "escalated", "degraded":
 		return p.phaseBlocked
 	default:
 		return p.phasePending
@@ -75,11 +75,11 @@ func (p stylePalette) iconFor(status string) string {
 	switch status {
 	case "running":
 		return iconRunning
-	case "done":
+	case "done", "completed":
 		return iconDone
-	case "failed":
+	case "failed", "error":
 		return iconFailed
-	case "blocked":
+	case "blocked", "escalated", "degraded":
 		return iconBlocked
 	default:
 		return iconPending

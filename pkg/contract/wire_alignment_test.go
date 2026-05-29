@@ -11,6 +11,112 @@ import (
 	"testing"
 )
 
+// cliEventsSourcePath is the CLI contract events file, relative to this package.
+const cliEventsSourcePath = "events.go"
+
+// applyBoardStatePath is the TUI ApplyBoardState implementation, relative to
+// this package (sophia-cli/pkg/contract/).
+const applyBoardStatePath = "../../internal/adapters/inbound/tui/applyboard_state.go"
+
+// parseCLIEventConstants parses events.go in this package and returns a map of
+// constName -> stringValue for every Event* constant.
+func parseCLIEventConstants(t *testing.T) map[string]string {
+	t.Helper()
+	fset := token.NewFileSet()
+	f, err := parser.ParseFile(fset, cliEventsSourcePath, nil, 0)
+	if err != nil {
+		t.Fatalf("parse CLI events source: %v", err)
+	}
+	out := map[string]string{}
+	for _, decl := range f.Decls {
+		gd, ok := decl.(*ast.GenDecl)
+		if !ok || gd.Tok != token.CONST {
+			continue
+		}
+		for _, sp := range gd.Specs {
+			vs, ok := sp.(*ast.ValueSpec)
+			if !ok {
+				continue
+			}
+			for i, name := range vs.Names {
+				if !strings.HasPrefix(name.Name, "Event") {
+					continue
+				}
+				if i >= len(vs.Values) {
+					continue
+				}
+				bl, ok := vs.Values[i].(*ast.BasicLit)
+				if !ok || bl.Kind != token.STRING {
+					continue
+				}
+				v, err := strconv.Unquote(bl.Value)
+				if err != nil {
+					t.Fatalf("strconv.Unquote(%q): %v", bl.Value, err)
+				}
+				out[name.Name] = v
+			}
+		}
+	}
+	return out
+}
+
+// parseApplyBoardCases parses applyboard_state.go and returns the set of
+// string values covered by case clauses in the ApplyEvent switch. It resolves
+// contract.EventApply* selectors using cliConstants (constName → stringValue).
+func parseApplyBoardCases(t *testing.T, cliConstants map[string]string) map[string]struct{} {
+	t.Helper()
+	fset := token.NewFileSet()
+	f, err := parser.ParseFile(fset, applyBoardStatePath, nil, 0)
+	if err != nil {
+		t.Fatalf("parse applyboard_state.go: %v", err)
+	}
+
+	covered := map[string]struct{}{}
+
+	// Walk the AST to find the ApplyEvent method and its switch statement.
+	ast.Inspect(f, func(n ast.Node) bool {
+		fd, ok := n.(*ast.FuncDecl)
+		if !ok {
+			return true
+		}
+		// Match the ApplyEvent method (receiver + name).
+		if fd.Name.Name != "ApplyEvent" {
+			return true
+		}
+		if fd.Recv == nil || len(fd.Recv.List) == 0 {
+			return true
+		}
+
+		// Walk the body for SwitchStmt.
+		ast.Inspect(fd.Body, func(n ast.Node) bool {
+			sw, ok := n.(*ast.SwitchStmt)
+			if !ok {
+				return true
+			}
+			for _, stmt := range sw.Body.List {
+				cc, ok := stmt.(*ast.CaseClause)
+				if !ok || cc.List == nil {
+					continue // default case
+				}
+				for _, expr := range cc.List {
+					sel, ok := expr.(*ast.SelectorExpr)
+					if !ok {
+						continue
+					}
+					constName := sel.Sel.Name
+					if v, ok := cliConstants[constName]; ok {
+						covered[v] = struct{}{}
+					}
+				}
+			}
+			return false // found the switch — stop descending
+		})
+		return false // found ApplyEvent — stop ascending
+	})
+
+	return covered
+}
+
 // orchSourcePath is the path to the orchestrator's event-name constants file,
 // relative to this package's directory (sophia-cli/pkg/contract/).
 // Path: ../../../ = sophia-cli/ → 2026/ workspace root → sophia-orchestator repo.
@@ -177,5 +283,74 @@ func TestKnownEvents_IsPackageMap(t *testing.T) {
 		if _, ok := knownEvents[ev]; ok {
 			t.Errorf("knownEvents unexpectedly contains aspirational key %q", ev)
 		}
+	}
+}
+
+// TestApplyHandlerCoverage (E1, E2) — inverse drift guard.
+//
+// Asserts that every apply.* event constant the orchestrator declares has a
+// corresponding handler case in ApplyBoardState.ApplyEvent. This is the
+// inverse of TestWireAlignment_OrchEventsMirrored: instead of checking that
+// the CLI *knows about* every orch event, it checks that ApplyBoard *handles*
+// every apply.* event (or has a documented reason for not doing so).
+//
+// Apply.* events intentionally NOT handled by ApplyBoardState:
+//
+//   - apply.board.save_failed — orch persistence failure; no TUI state to update
+//   - apply.worktree.error   — infrastructure error; surfaced via Timeline or error bar
+//
+// Any new apply.* event added to the orch that ApplyBoard should not handle
+// must be added to intentionallyIgnored below with a documented reason.
+func TestApplyHandlerCoverage(t *testing.T) {
+	orchEvents, skipReason := parseOrchEvents(t)
+	if orchEvents == nil {
+		t.Skipf("cross-repo drift check skipped: %s", skipReason)
+	}
+
+	// Sanity: parser must find at least one event.
+	if len(orchEvents) == 0 {
+		t.Fatal("no Event* constants extracted from orch source; check orchSourcePath")
+	}
+
+	// Filter to apply.* events only.
+	applyOrchEvents := map[string]string{}
+	for name, value := range orchEvents {
+		if strings.HasPrefix(value, "apply.") {
+			applyOrchEvents[name] = value
+		}
+	}
+	if len(applyOrchEvents) == 0 {
+		t.Fatal("no apply.* events found in orch source; check parsing logic")
+	}
+
+	// Documented allowlist: apply.* events that ApplyBoard intentionally does
+	// not handle. Each entry MUST have a comment explaining why.
+	intentionallyIgnored := map[string]string{
+		"apply.board.save_failed": "orch persistence failure; no TUI state to update — operator sees via error bar if present",
+		"apply.worktree.error":    "infrastructure error; not per-group state — surfaced via Timeline error bar",
+	}
+
+	// Parse CLI constants (to resolve contract.EventApply* names → values).
+	cliConstants := parseCLIEventConstants(t)
+	if len(cliConstants) == 0 {
+		t.Fatal("no Event* constants found in CLI events.go; check parseCLIEventConstants")
+	}
+
+	// Parse ApplyEvent switch cases in applyboard_state.go.
+	handledCases := parseApplyBoardCases(t, cliConstants)
+	if len(handledCases) == 0 {
+		t.Fatal("no cases found in ApplyBoardState.ApplyEvent switch; check parseApplyBoardCases")
+	}
+
+	// Assert every orch apply.* event is either handled or intentionally ignored.
+	for orchName, orchValue := range applyOrchEvents {
+		if _, handled := handledCases[orchValue]; handled {
+			continue
+		}
+		if reason, ignored := intentionallyIgnored[orchValue]; ignored {
+			t.Logf("apply.* event %s = %q is intentionally not handled by ApplyBoard: %s", orchName, orchValue, reason)
+			continue
+		}
+		t.Errorf("drift: orch emits %s = %q but ApplyBoardState.ApplyEvent has no handler case for it", orchName, orchValue)
 	}
 }

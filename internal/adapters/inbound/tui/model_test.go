@@ -327,10 +327,9 @@ func TestModelApplySnapshotSamePhaseKeepsBanner(t *testing.T) {
 }
 
 // TestModelApplyEvent_DoesNotRoutePhantomToApplyBoard — scenario A5.
-// After the cli-tui-applyboard-realign model redesign, phantom event types
-// (task.started, task.completed, agent.spawned, agent.completed) no longer
-// populate ApplyBoard. The model routing still forwards them (PR-2 removes
-// the routing), but ApplyBoardState.ApplyEvent returns the receiver unchanged.
+// PR-2 routing cleanup: phantom event types (task.started, task.completed,
+// agent.spawned, agent.completed) are no longer forwarded to ApplyBoard by
+// model.go. They hit the default case and ApplyBoard state is unchanged.
 func TestModelApplyEvent_DoesNotRoutePhantomToApplyBoard(t *testing.T) {
 	phantomEvents := []domain.Event{
 		{Type: "task.started", Payload: map[string]any{"group_id": "g1", "task_id": "t1", "files_pattern": "internal/**"}},

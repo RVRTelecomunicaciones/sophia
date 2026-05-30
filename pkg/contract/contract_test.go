@@ -103,8 +103,8 @@ func TestEventConstants_Required(t *testing.T) {
 
 // TestEventConstants_Optional covers backward compat for the existing
 // optional-known events that are still in knownEvents post-refactor.
-// EventTaskCreated/Started/Completed/Failed and EventAgentCompleted are
-// intentionally removed from this list (they are now aspirational/aliased).
+// EventTaskCreated/Started/Completed/Failed are intentionally removed from
+// this list (they are now aspirational).
 func TestEventConstants_Optional(t *testing.T) {
 	optional := []string{
 		EventAgentDispatched,
@@ -195,18 +195,6 @@ func TestEventConstants_AspirationalNotRecognized(t *testing.T) {
 				t.Errorf("IsKnownEvent(%q) = true, want false (aspirational/legacy)", tc.event)
 			}
 		})
-	}
-}
-
-// TestEventAgentCompleted_IsDeprecatedAlias covers scenario D6: EventAgentCompleted
-// is a deprecated alias with value equal to the canonical orch event string.
-func TestEventAgentCompleted_IsDeprecatedAlias(t *testing.T) {
-	if EventAgentCompleted != "agent.envelope.received" {
-		t.Errorf("EventAgentCompleted = %q, want %q", EventAgentCompleted, "agent.envelope.received")
-	}
-	if EventAgentCompleted != EventAgentEnvelopeReceived {
-		t.Errorf("EventAgentCompleted (%q) != EventAgentEnvelopeReceived (%q)",
-			EventAgentCompleted, EventAgentEnvelopeReceived)
 	}
 }
 

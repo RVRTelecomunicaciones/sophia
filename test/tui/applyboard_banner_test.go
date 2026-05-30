@@ -12,8 +12,9 @@ import (
 	"github.com/RVRTelecomunicaciones/sophia/internal/domain"
 )
 
-// TestTUITabTogglesToApplyBoard sends a task.started event, presses Tab,
-// and asserts the ApplyBoard view replaces the Timeline.
+// TestTUITabTogglesToApplyBoard presses Tab and asserts the ApplyBoard view
+// replaces the Timeline. Board content population (via apply.* routing) is
+// wired in PR-2; this test confirms the Tab toggle mechanism is intact.
 func TestTUITabTogglesToApplyBoard(t *testing.T) {
 	tm := teatest.NewTestModel(
 		t,
@@ -21,16 +22,6 @@ func TestTUITabTogglesToApplyBoard(t *testing.T) {
 		teatest.WithInitialTermSize(120, 40),
 	)
 	defer tm.Quit() //nolint:errcheck
-
-	// Feed a task.started event so the ApplyBoard has content.
-	tm.Send(tui.EventMsg{Event: domain.Event{
-		Type: "task.started",
-		Payload: map[string]any{
-			"group_id":      "g1",
-			"task_id":       "t1",
-			"files_pattern": "internal/**",
-		},
-	}})
 
 	// Initially we're in Timeline — assert phase names appear.
 	teatest.WaitFor(t, tm.Output(), func(b []byte) bool {
@@ -40,12 +31,12 @@ func TestTUITabTogglesToApplyBoard(t *testing.T) {
 	// Press Tab — switch to ApplyBoard.
 	tm.Send(tea.KeyPressMsg{Code: tea.KeyTab})
 
-	// ApplyBoard should now show the header and task content.
+	// ApplyBoard header must appear. Empty-state hint is expected because
+	// apply.* routing in model.go is updated in PR-2.
 	teatest.WaitFor(t, tm.Output(), func(b []byte) bool {
 		s := string(b)
 		return strings.Contains(s, "ApplyBoard") &&
-			strings.Contains(s, "g1") &&
-			strings.Contains(s, "t1")
+			strings.Contains(s, "No tasks yet")
 	}, teatest.WithDuration(2*time.Second))
 
 	// Press Tab again — back to Timeline.

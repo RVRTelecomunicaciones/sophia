@@ -326,32 +326,21 @@ func TestModelApplySnapshotSamePhaseKeepsBanner(t *testing.T) {
 	}
 }
 
-func TestModelApplyEventTaskStartedFeedsApplyBoard(t *testing.T) {
-	m := tui.NewModel(tui.ModelConfig{ChangeID: domain.ChangeID("01HX")})
-	m2 := m.ApplyEvent(domain.Event{
-		Type: "task.started",
-		Payload: map[string]any{
-			"group_id":      "g1",
-			"task_id":       "t1",
-			"files_pattern": "internal/**",
-		},
-	})
-	if m2.ApplyBoard().GroupCount() != 1 {
-		t.Error("task.started should feed ApplyBoard")
+// TestModelApplyEvent_DoesNotRoutePhantomToApplyBoard — scenario A5.
+// PR-2 routing cleanup: phantom event types (task.started, task.completed,
+// agent.spawned, agent.completed) are no longer forwarded to ApplyBoard by
+// model.go. They hit the default case and ApplyBoard state is unchanged.
+func TestModelApplyEvent_DoesNotRoutePhantomToApplyBoard(t *testing.T) {
+	phantomEvents := []domain.Event{
+		{Type: "task.started", Payload: map[string]any{"group_id": "g1", "task_id": "t1", "files_pattern": "internal/**"}},
+		{Type: "task.completed", Payload: map[string]any{"group_id": "g1", "task_id": "t1", "status": "done"}},
+		{Type: "agent.spawned", Payload: map[string]any{"agent_id": "a1", "agent_role": "team_lead", "group_id": "g1", "task_id": "t1"}},
+		{Type: "agent.completed", Payload: map[string]any{"agent_id": "a1", "status": "done"}},
 	}
-}
-
-func TestModelApplyEventAgentSpawnedFeedsApplyBoard(t *testing.T) {
-	m := tui.NewModel(tui.ModelConfig{ChangeID: domain.ChangeID("01HX")}).
-		ApplyEvent(domain.Event{Type: "task.started", Payload: map[string]any{"group_id": "g1", "task_id": "t1"}}).
-		ApplyEvent(domain.Event{Type: "agent.spawned", Payload: map[string]any{"agent_id": "a1", "agent_role": "team_lead", "group_id": "g1", "task_id": "t1"}})
-
-	board := m.ApplyBoard()
-	if len(board.Groups()) != 1 {
-		t.Fatal("groups missing")
-	}
-	task := board.Groups()[0].Tasks[0]
-	if len(task.Agents) != 1 || task.Agents[0].Role != "team_lead" {
-		t.Errorf("agent missing or wrong: %+v", task.Agents)
+	for _, ev := range phantomEvents {
+		m := tui.NewModel(tui.ModelConfig{ChangeID: domain.ChangeID("01HX")}).ApplyEvent(ev)
+		if m.ApplyBoard().GroupCount() != 0 {
+			t.Errorf("phantom event %q should not populate ApplyBoard; got %d groups", ev.Type, m.ApplyBoard().GroupCount())
+		}
 	}
 }

@@ -4,6 +4,7 @@ import (
 	"time"
 
 	"github.com/RVRTelecomunicaciones/sophia/internal/domain"
+	"github.com/RVRTelecomunicaciones/sophia/pkg/contract"
 )
 
 // DefaultWidth and DefaultHeight are conservative defaults for terminals
@@ -223,10 +224,8 @@ func (m Model) ApplySnapshot(c *domain.Change) Model {
 //   - phase.started, phase.completed, phase.failed — Timeline phase transitions
 //   - approval.required                    — sets bannerGate AND marks phase row
 //   - approval.resolved                    — clears bannerGate (M7)
-//   - task.started, task.completed         — feeds ApplyBoard (M7)
-//   - agent.spawned (legacy) / agent.dispatched (canonical, sophia-wire-v1) — feeds ApplyBoard
-//   - agent.completed                      — feeds ApplyBoard
-//   - apply.* (Optional, diagnostic)       — Phase 1.5 amendment: tolerated, no-op
+//   - apply.board.created … apply.materialize.error — 16 real apply events feed ApplyBoard
+//   - agent.dispatched                     — Timeline/dispatch concern; tolerated, no-op for ApplyBoard
 //   - open                                 — sophia-wire-v1 §5.3 open event: no-op
 //   - heartbeat                            — already filtered by Runner; no-op here
 //
@@ -248,14 +247,28 @@ func (m Model) ApplyEvent(ev domain.Event) Model {
 	case "approval.resolved":
 		m.bannerGate = nil
 		return m
-	case "task.started", "task.completed", "agent.spawned", "agent.dispatched", "agent.completed":
+	case contract.EventApplyBoardCreated,
+		contract.EventApplyTeamLeadSpawned,
+		contract.EventApplyTaskClaimed,
+		contract.EventApplyTaskClaimSkipped,
+		contract.EventApplyTaskRetry,
+		contract.EventApplyTaskEscalated,
+		contract.EventApplyGroupCompleted,
+		contract.EventApplyGroupFailed,
+		contract.EventApplyGroupDegraded,
+		contract.EventApplyImplementSpawnFailed,
+		contract.EventApplyImplementSpawnGovernorError,
+		contract.EventApplyDispatchError,
+		contract.EventApplyEnvelopeValidationFailed,
+		contract.EventApplyMaterializeStarted,
+		contract.EventApplyMaterializeCompleted,
+		contract.EventApplyMaterializeError:
 		m.applyBoard = m.applyBoard.ApplyEvent(ev)
 		return m
 	default:
-		// Unknown event types (e.g. orch-internal extensions, future
-		// `apply.*` diagnostics — Phase 1.5 amendment) are tolerated:
-		// the Timeline / ApplyBoard remain unchanged. This is the
-		// forward-compat policy from sophia-wire-v1 §10.
+		// Unknown event types (agent.dispatched, orch-internal extensions,
+		// future events) are tolerated: Timeline / ApplyBoard unchanged.
+		// Forward-compat policy from sophia-wire-v1 §10.
 		return m
 	}
 }

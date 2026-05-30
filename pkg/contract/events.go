@@ -92,27 +92,12 @@ const (
 )
 
 // =============================================================================
-// SECTION 4: Deprecated aliases
-// Kept for compile-time compat with existing TUI handlers. The follow-up
-// change cli-tui-event-realign removes these references and then deletes
-// the aliases.
-// =============================================================================
-
-const (
-	// Deprecated: orch emits "agent.envelope.received"; this alias preserves
-	// compile compat for TUI handlers pending PR cli-tui-event-realign.
-	EventAgentCompleted = EventAgentEnvelopeReceived
-)
-
-// =============================================================================
 // Validation
 // =============================================================================
 
 // knownEvents is the canonical set of events recognized by IsKnownEvent.
 // Aspirational events (Section 3) are intentionally NOT in this set — orch
 // does not emit them, so the CLI treats them as unknown today.
-// EventAgentCompleted (Section 4) is also excluded as a key: its value equals
-// EventAgentEnvelopeReceived, which IS present, so no duplicate key is needed.
 var knownEvents = map[string]struct{}{
 	// Section 1: Mirrored from orch.
 	EventPhaseStarted:                     {},

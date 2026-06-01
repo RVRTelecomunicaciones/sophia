@@ -2,7 +2,6 @@ package domain_test
 
 import (
 	"testing"
-	"time"
 
 	"github.com/RVRTelecomunicaciones/sophia/internal/domain"
 )
@@ -67,5 +66,4 @@ func TestPhaseZeroValue(t *testing.T) {
 	if !p.StartedAt.IsZero() {
 		t.Error("zero Phase StartedAt must be zero time")
 	}
-	_ = time.Time{}
 }

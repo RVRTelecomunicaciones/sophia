@@ -286,6 +286,184 @@ func TestKnownEvents_IsPackageMap(t *testing.T) {
 	}
 }
 
+// domainPhasePath is the canonical PhaseStatus source, relative to this package.
+const domainPhasePath = "../../internal/domain/phase.go"
+
+// parseContractPhaseStatusValues parses events.go in this package and returns
+// the set of string values for every PhaseStatus* untyped string constant.
+// This is the contract layer's re-declaration of the canonical enum.
+func parseContractPhaseStatusValues(t *testing.T) map[string]string {
+	t.Helper()
+	fset := token.NewFileSet()
+	f, err := parser.ParseFile(fset, cliEventsSourcePath, nil, 0)
+	if err != nil {
+		t.Fatalf("parse contract events source: %v", err)
+	}
+	out := map[string]string{} // constName -> stringValue
+	for _, decl := range f.Decls {
+		gd, ok := decl.(*ast.GenDecl)
+		if !ok || gd.Tok != token.CONST {
+			continue
+		}
+		for _, sp := range gd.Specs {
+			vs, ok := sp.(*ast.ValueSpec)
+			if !ok {
+				continue
+			}
+			for i, name := range vs.Names {
+				if !strings.HasPrefix(name.Name, "PhaseStatus") {
+					continue
+				}
+				if i >= len(vs.Values) {
+					continue
+				}
+				bl, ok := vs.Values[i].(*ast.BasicLit)
+				if !ok || bl.Kind != token.STRING {
+					continue
+				}
+				v, err := strconv.Unquote(bl.Value)
+				if err != nil {
+					t.Fatalf("strconv.Unquote(%q): %v", bl.Value, err)
+				}
+				out[name.Name] = v
+			}
+		}
+	}
+	return out
+}
+
+// parseDomainPhaseStatusValues parses internal/domain/phase.go and returns
+// the set of string values for every typed PhaseStatus constant.
+// These are the canonical values; all other declarations must match them.
+func parseDomainPhaseStatusValues(t *testing.T) map[string]string {
+	t.Helper()
+	fset := token.NewFileSet()
+	f, err := parser.ParseFile(fset, domainPhasePath, nil, 0)
+	if err != nil {
+		t.Fatalf("parse domain phase source: %v", err)
+	}
+	out := map[string]string{} // constName -> stringValue
+	for _, decl := range f.Decls {
+		gd, ok := decl.(*ast.GenDecl)
+		if !ok || gd.Tok != token.CONST {
+			continue
+		}
+		for _, sp := range gd.Specs {
+			vs, ok := sp.(*ast.ValueSpec)
+			if !ok {
+				continue
+			}
+			// Only collect constants whose type is PhaseStatus.
+			if vs.Type == nil {
+				continue
+			}
+			ident, ok := vs.Type.(*ast.Ident)
+			if !ok || ident.Name != "PhaseStatus" {
+				continue
+			}
+			for i, name := range vs.Names {
+				if i >= len(vs.Values) {
+					continue
+				}
+				bl, ok := vs.Values[i].(*ast.BasicLit)
+				if !ok || bl.Kind != token.STRING {
+					continue
+				}
+				v, err := strconv.Unquote(bl.Value)
+				if err != nil {
+					t.Fatalf("strconv.Unquote(%q): %v", bl.Value, err)
+				}
+				out[name.Name] = v
+			}
+		}
+	}
+	return out
+}
+
+// TestPhaseStatusDrift (D1–D4) guards against drift between the two
+// PhaseStatus declarations that exist in this repo:
+//
+//   - D1: pkg/contract/events.go — untyped string constants (contract layer)
+//   - D2: internal/domain/phase.go — typed PhaseStatus constants (canonical)
+//
+// The spec (sophia-wire-v1 §6.1) defines exactly 7 canonical values. Any
+// addition, removal, or rename in EITHER file is a spec violation and fails CI.
+//
+// Why two files? Slice B re-declared the 7 values in events.go (as untyped
+// string constants) instead of re-exporting the typed enum. Until that is
+// refactored, this test enforces value parity so the two declarations cannot
+// silently diverge. See ADR-0003 follow-up note.
+func TestPhaseStatusDrift(t *testing.T) {
+	// D1: parse both sources.
+	contractVals := parseContractPhaseStatusValues(t)
+	domainVals := parseDomainPhaseStatusValues(t)
+
+	// D2: each parser must find at least one value — catch empty-parse bugs.
+	if len(contractVals) == 0 {
+		t.Fatal("no PhaseStatus* constants found in pkg/contract/events.go; check parseContractPhaseStatusValues")
+	}
+	if len(domainVals) == 0 {
+		t.Fatal("no PhaseStatus typed constants found in internal/domain/phase.go; check parseDomainPhaseStatusValues")
+	}
+
+	// Canonical 7 values from sophia-wire-v1 §6.1.
+	// "failed" is NOT listed — it is the phase.failed SSE event, not a status.
+	canonical := map[string]struct{}{
+		"pending":           {},
+		"running":           {},
+		"done":              {},
+		"done_with_concerns": {},
+		"blocked":           {},
+		"needs_context":     {},
+		"interrupted":       {},
+	}
+
+	// D3: contract/events.go values MUST equal the canonical set.
+	contractValueSet := map[string]struct{}{}
+	for _, v := range contractVals {
+		contractValueSet[v] = struct{}{}
+	}
+	for v := range canonical {
+		if _, ok := contractValueSet[v]; !ok {
+			t.Errorf("contract/events.go is missing canonical PhaseStatus value %q", v)
+		}
+	}
+	for v := range contractValueSet {
+		if _, ok := canonical[v]; !ok {
+			t.Errorf("contract/events.go has extra PhaseStatus value %q not in canonical set", v)
+		}
+	}
+
+	// D4: domain/phase.go values MUST equal the canonical set.
+	domainValueSet := map[string]struct{}{}
+	for _, v := range domainVals {
+		domainValueSet[v] = struct{}{}
+	}
+	for v := range canonical {
+		if _, ok := domainValueSet[v]; !ok {
+			t.Errorf("internal/domain/phase.go is missing canonical PhaseStatus value %q", v)
+		}
+	}
+	for v := range domainValueSet {
+		if _, ok := canonical[v]; !ok {
+			t.Errorf("internal/domain/phase.go has extra PhaseStatus value %q not in canonical set", v)
+		}
+	}
+
+	// D5: the two files MUST carry identical value sets — any divergence is
+	// caught here even if both happen to drift from canonical in the same direction.
+	for v := range contractValueSet {
+		if _, ok := domainValueSet[v]; !ok {
+			t.Errorf("VALUE PARITY FAIL: contract/events.go has PhaseStatus value %q but internal/domain/phase.go does not", v)
+		}
+	}
+	for v := range domainValueSet {
+		if _, ok := contractValueSet[v]; !ok {
+			t.Errorf("VALUE PARITY FAIL: internal/domain/phase.go has PhaseStatus value %q but contract/events.go does not", v)
+		}
+	}
+}
+
 // TestApplyHandlerCoverage (E1, E2) — inverse drift guard.
 //
 // Asserts that every apply.* event constant the orchestrator declares has a

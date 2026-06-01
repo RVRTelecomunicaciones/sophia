@@ -2,7 +2,6 @@ package domain_test
 
 import (
 	"testing"
-	"time"
 
 	"github.com/RVRTelecomunicaciones/sophia/internal/domain"
 )
@@ -39,12 +38,18 @@ func TestPhaseTypeIsValid(t *testing.T) {
 }
 
 func TestPhaseStatusIsTerminal(t *testing.T) {
+	// Canonical 7-value set per sophia-wire-v1 §6.1.
+	// Terminal: done, done_with_concerns, blocked.
+	// Non-terminal: pending, running, needs_context, interrupted.
+	// Note: "failed" is NOT a phase status — it is the phase.failed SSE event (§5.3).
 	cases := map[domain.PhaseStatus]bool{
-		domain.PhaseStatusPending: false,
-		domain.PhaseStatusRunning: false,
-		domain.PhaseStatusDone:    true,
-		domain.PhaseStatusBlocked: true,
-		domain.PhaseStatusFailed:  true,
+		domain.PhaseStatusPending:          false,
+		domain.PhaseStatusRunning:          false,
+		domain.PhaseStatusDone:             true,
+		domain.PhaseStatusDoneWithConcerns: true,
+		domain.PhaseStatusBlocked:          true,
+		domain.PhaseStatusNeedsContext:     false,
+		domain.PhaseStatusInterrupted:      false,
 	}
 	for s, want := range cases {
 		if got := s.IsTerminal(); got != want {
@@ -61,5 +66,4 @@ func TestPhaseZeroValue(t *testing.T) {
 	if !p.StartedAt.IsZero() {
 		t.Error("zero Phase StartedAt must be zero time")
 	}
-	_ = time.Time{}
 }

@@ -210,6 +210,31 @@ v0.2.0 refactor and the orchestrator stays untouched.
 4. **What's the orchestrator's release cadence?** A3 requires both
    repos' release windows to align.
 
+## Follow-up: Phase-status drift audit closed (2026-06-01)
+
+- **Status:** Closed
+- **Change:** `phase-status-drift-audit` (Slice C, PR #12, branch `feat/phase-status-drift-detector`)
+- **Summary:** Canonical PhaseStatus set stabilised at 7 values (`pending`, `running`, `done`,
+  `done_with_concerns`, `blocked`, `needs_context`, `interrupted`). `failed` is confirmed as the
+  `phase.failed` SSE event (§5.3), not a phase status. This closes the drift first recorded in
+  sophia-orchestator ADR-0006 §"Closed: PhaseStatus drift audit".
+- **Drift detector added:** `pkg/contract/wire_alignment_test.go` — `TestPhaseStatusDrift` (D1–D5).
+  Parses both `pkg/contract/events.go` (untyped string constants) and
+  `internal/domain/phase.go` (typed `PhaseStatus` constants) via `go/parser` and asserts:
+  (a) each file's value set equals the canonical 7, and
+  (b) the two files carry identical values (VALUE PARITY).
+  Any addition, removal, or rename in either file now fails CI.
+- **Design note — re-declare vs re-export:** Slice B re-declared the 7 values as untyped string
+  constants in `pkg/contract/events.go` rather than re-exporting the typed enum from
+  `internal/domain/phase.go`. Values are identical today and the drift detector enforces parity
+  at CI. Refactoring `events.go` to use `const PhaseStatusPending = string(domain.PhaseStatusPending)`
+  is a recommended hygiene follow-up (separate change; zero functional impact today).
+- **Adjacent drift deferred:** `internal/domain/change.go` is missing `ChangeStatusAborted`
+  (spec §505). Recorded as out-of-scope follow-up — see tasks.md deferred item.
+- **Cross-repo governance:** Orch ADR-0006 records the same closure. Same-commit-pair rule
+  applies: orch Slice A (PR #56) + cli Slice B (PR #11) + cli Slice C (PR #12) must merge
+  together before either repo is considered aligned.
+
 ## Appendix A — Full inventory
 
 See `docs/superpowers/research/m10-wire-inventory.md` (will be committed

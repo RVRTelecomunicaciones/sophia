@@ -493,7 +493,7 @@ func (r *Runner) finishWithSink(ctx context.Context, res RunResult, st domain.Ch
 	switch st {
 	case domain.ChangeStatusDone:
 		return res, nil
-	case domain.ChangeStatusBlocked, domain.ChangeStatusFailed:
+	case domain.ChangeStatusBlocked, domain.ChangeStatusFailed, domain.ChangeStatusAborted:
 		return res, &ExitError{Code: 1, Err: fmt.Errorf("change ended %s", st)}
 	default:
 		return res, &ExitError{Code: 4, Err: fmt.Errorf("unexpected non-terminal status %q", st)}

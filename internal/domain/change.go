@@ -15,10 +15,11 @@ const (
 	ChangeStatusDone    ChangeStatus = "done"
 	ChangeStatusBlocked ChangeStatus = "blocked"
 	ChangeStatusFailed  ChangeStatus = "failed"
+	ChangeStatusAborted ChangeStatus = "aborted"
 )
 
 func (s ChangeStatus) IsTerminal() bool {
-	return s == ChangeStatusDone || s == ChangeStatusBlocked || s == ChangeStatusFailed
+	return s == ChangeStatusDone || s == ChangeStatusBlocked || s == ChangeStatusFailed || s == ChangeStatusAborted
 }
 
 type Change struct {

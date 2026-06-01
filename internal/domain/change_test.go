@@ -31,11 +31,21 @@ func TestChangeStatusIsTerminal(t *testing.T) {
 		domain.ChangeStatusDone:    true,
 		domain.ChangeStatusBlocked: true,
 		domain.ChangeStatusFailed:  true,
+		domain.ChangeStatusAborted: true,
 	}
 	for s, want := range cases {
 		if got := s.IsTerminal(); got != want {
 			t.Errorf("%q.IsTerminal() = %v, want %v", s, got, want)
 		}
+	}
+}
+
+func TestChangeStatusAbortedValue(t *testing.T) {
+	// Spec §505: ChangeStatus aborted must equal the wire value "aborted"
+	// (pkg/contract/events.go ChangeStatusAborted = "aborted").
+	const wantWireValue = "aborted"
+	if got := string(domain.ChangeStatusAborted); got != wantWireValue {
+		t.Errorf("ChangeStatusAborted = %q, want wire value %q", got, wantWireValue)
 	}
 }
 

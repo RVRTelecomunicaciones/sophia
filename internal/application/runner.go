@@ -366,18 +366,27 @@ func isPhaseInFlight(phaseStatus string) bool {
 }
 
 // mapPhaseLowercaseTerminalToChange is the GetPhase counterpart of
-// mapPhaseTerminalToChange. The phase REST response uses the orch's
-// lowercase wire enum (done|blocked|needs_context|failed|...) rather
-// than the envelope's uppercase variant, so the mapping table differs
-// by case only.
+// mapPhaseTerminalToChange. It maps a canonical phase status (from
+// GET /api/v1/phases/{id}) to a ChangeStatus for the fallback path
+// when the SSE stream ends before a terminal event is received.
+//
+// Canonical phase status set (sophia-wire-v1 §6.1, 7 values):
+//
+//	pending, running, done, done_with_concerns, blocked, needs_context, interrupted
+//
+// Important: "failed" is NOT a phase status — it is the phase.failed
+// SSE event (§5.3). When a phase fails, its persisted status is "blocked".
+// Mapping "blocked" to ChangeStatusBlocked here is intentional and correct:
+// a late subscriber cannot distinguish a hard failure from an approval wait
+// using GET /phases/{id} alone. The event-driven path (mapPhaseTerminalToChange
+// via phaseTerminalStatusFromEvent) is the only reliable way to surface
+// ChangeStatusFailed — it requires observing the phase.failed SSE event.
 func mapPhaseLowercaseTerminalToChange(phaseStatus string) domain.ChangeStatus {
 	switch phaseStatus {
-	case "done", "done_with_concerns", "done_with_rejections":
+	case "done", "done_with_concerns":
 		return domain.ChangeStatusDone
 	case "blocked", "needs_context":
 		return domain.ChangeStatusBlocked
-	case "failed", "timed_out", "aborted":
-		return domain.ChangeStatusFailed
 	}
 	return ""
 }

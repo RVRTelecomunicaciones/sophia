@@ -162,13 +162,17 @@ func IsRequiredEvent(eventType string) bool {
 }
 
 // PhaseStatus values used in PhaseDTO and on phase-related events.
-// See sophia-wire-v1 §6.1.
+// Canonical 7-value set — see sophia-wire-v1 §6.1.
+// "failed" is NOT a phase status; it is the phase.failed SSE event (§5.3).
+// Authoritative typed enum: internal/domain/phase.go.
 const (
-	PhaseStatusPending = "pending"
-	PhaseStatusRunning = "running"
-	PhaseStatusBlocked = "blocked"
-	PhaseStatusDone    = "done"
-	PhaseStatusFailed  = "failed"
+	PhaseStatusPending          = "pending"
+	PhaseStatusRunning          = "running"
+	PhaseStatusDone             = "done"
+	PhaseStatusDoneWithConcerns = "done_with_concerns"
+	PhaseStatusBlocked          = "blocked"
+	PhaseStatusNeedsContext     = "needs_context"
+	PhaseStatusInterrupted      = "interrupted"
 )
 
 // ChangeStatus values used in ChangeResponse.

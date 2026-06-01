@@ -82,12 +82,19 @@ func TestMapPhaseTerminalToChange(t *testing.T) {
 	}
 }
 
-// TestIsPhaseInFlight locks in which orch phase statuses the runner
-// treats as "still running, re-subscribe rather than bail" vs which
-// it treats as "really terminal, decide outcome now". The 3 in-flight
-// (pending/running/interrupted) come from the orch's PhaseStatus enum;
-// keeping the table explicit prevents regressions if anyone narrows
-// or widens the re-subscribe trigger.
+// TestIsPhaseInFlight locks in which canonical phase statuses the runner
+// treats as "still running, re-subscribe rather than bail" vs which it
+// treats as "really terminal, decide outcome now".
+//
+// In-flight set (3): pending, running, interrupted.
+// Terminal set from sophia-wire-v1 §6.1 (canonical 7 minus in-flight 3):
+//
+//	done, done_with_concerns, blocked, needs_context
+//
+// Any unrecognized value (including the non-status strings "failed",
+// "aborted", "timed_out") is also treated as not-in-flight so the
+// runner falls through to a terminal decision rather than re-subscribing
+// indefinitely.
 func TestIsPhaseInFlight(t *testing.T) {
 	inFlight := []string{"pending", "running", "interrupted"}
 	for _, s := range inFlight {
@@ -96,14 +103,51 @@ func TestIsPhaseInFlight(t *testing.T) {
 		}
 	}
 
+	// Canonical terminal statuses (sophia-wire-v1 §6.1).
+	// "failed" is NOT a phase status — it is the phase.failed SSE event (§5.3);
+	// it correctly falls through to the unrecognized bucket here.
 	terminal := []string{
-		"done", "done_with_concerns", "done_with_rejections",
-		"blocked", "needs_context", "failed", "aborted", "timed_out",
+		"done", "done_with_concerns", "blocked", "needs_context",
 		"", "unknown-future-value",
 	}
 	for _, s := range terminal {
 		if isPhaseInFlight(s) {
 			t.Errorf("status %q must NOT be in-flight (terminal or unrecognized)", s)
 		}
+	}
+}
+
+// TestMapPhaseLowercaseTerminalToChange covers the GET /phases fallback path
+// that maps canonical phase statuses to ChangeStatus for exit code decisions.
+//
+// Design invariant: "blocked" always maps to ChangeStatusBlocked — NOT
+// ChangeStatusFailed — because GET /phases/{id} returns "blocked" for both
+// hard failures and approval waits. The phase.failed SSE event (observed via
+// phaseTerminalStatusFromEvent + mapPhaseTerminalToChange) is the only reliable
+// signal for ChangeStatusFailed. A late subscriber cannot infer failure from
+// GET /phases/{id} alone.
+func TestMapPhaseLowercaseTerminalToChange(t *testing.T) {
+	cases := map[string]domain.ChangeStatus{
+		// Canonical terminal successes.
+		"done":               domain.ChangeStatusDone,
+		"done_with_concerns": domain.ChangeStatusDone,
+		// Canonical blocked — maps to blocked regardless of cause.
+		"blocked":       domain.ChangeStatusBlocked,
+		"needs_context": domain.ChangeStatusBlocked,
+		// In-flight statuses produce no mapping (caller should not reach here).
+		"pending":     domain.ChangeStatus(""),
+		"running":     domain.ChangeStatus(""),
+		"interrupted": domain.ChangeStatus(""),
+		// Unrecognized / non-status strings produce no mapping.
+		"":                    domain.ChangeStatus(""),
+		"unknown-future-value": domain.ChangeStatus(""),
+	}
+	for input, want := range cases {
+		t.Run("phase_status="+input, func(t *testing.T) {
+			got := mapPhaseLowercaseTerminalToChange(input)
+			if got != want {
+				t.Errorf("got %q, want %q", got, want)
+			}
+		})
 	}
 }

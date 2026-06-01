@@ -139,7 +139,7 @@ func TestMapPhaseLowercaseTerminalToChange(t *testing.T) {
 		"running":     domain.ChangeStatus(""),
 		"interrupted": domain.ChangeStatus(""),
 		// Unrecognized / non-status strings produce no mapping.
-		"":                    domain.ChangeStatus(""),
+		"":                     domain.ChangeStatus(""),
 		"unknown-future-value": domain.ChangeStatus(""),
 	}
 	for input, want := range cases {

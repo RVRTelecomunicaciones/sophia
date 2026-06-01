@@ -409,13 +409,13 @@ func TestPhaseStatusDrift(t *testing.T) {
 	// Canonical 7 values from sophia-wire-v1 §6.1.
 	// "failed" is NOT listed — it is the phase.failed SSE event, not a status.
 	canonical := map[string]struct{}{
-		"pending":           {},
-		"running":           {},
-		"done":              {},
+		"pending":            {},
+		"running":            {},
+		"done":               {},
 		"done_with_concerns": {},
-		"blocked":           {},
-		"needs_context":     {},
-		"interrupted":       {},
+		"blocked":            {},
+		"needs_context":      {},
+		"interrupted":        {},
 	}
 
 	// D3: contract/events.go values MUST equal the canonical set.

@@ -532,3 +532,169 @@ func TestApplyHandlerCoverage(t *testing.T) {
 		t.Errorf("drift: orch emits %s = %q but ApplyBoardState.ApplyEvent has no handler case for it", orchName, orchValue)
 	}
 }
+
+// domainChangePath is the canonical ChangeStatus source, relative to this package.
+const domainChangePath = "../../internal/domain/change.go"
+
+// parseContractChangeStatusValues extracts every ChangeStatus* string constant
+// from pkg/contract/events.go (untyped contract-layer constants).
+func parseContractChangeStatusValues(t *testing.T) map[string]string {
+	t.Helper()
+	fset := token.NewFileSet()
+	f, err := parser.ParseFile(fset, cliEventsSourcePath, nil, 0)
+	if err != nil {
+		t.Fatalf("parse contract events source: %v", err)
+	}
+	out := map[string]string{} // constName -> stringValue
+	for _, decl := range f.Decls {
+		gd, ok := decl.(*ast.GenDecl)
+		if !ok || gd.Tok != token.CONST {
+			continue
+		}
+		for _, sp := range gd.Specs {
+			vs, ok := sp.(*ast.ValueSpec)
+			if !ok {
+				continue
+			}
+			for i, name := range vs.Names {
+				if !strings.HasPrefix(name.Name, "ChangeStatus") {
+					continue
+				}
+				if i >= len(vs.Values) {
+					continue
+				}
+				bl, ok := vs.Values[i].(*ast.BasicLit)
+				if !ok || bl.Kind != token.STRING {
+					continue
+				}
+				v, err := strconv.Unquote(bl.Value)
+				if err != nil {
+					t.Fatalf("strconv.Unquote(%q): %v", bl.Value, err)
+				}
+				out[name.Name] = v
+			}
+		}
+	}
+	return out
+}
+
+// parseDomainChangeStatusValues extracts every typed ChangeStatus constant from
+// internal/domain/change.go (the canonical typed enum).
+func parseDomainChangeStatusValues(t *testing.T) map[string]string {
+	t.Helper()
+	fset := token.NewFileSet()
+	f, err := parser.ParseFile(fset, domainChangePath, nil, 0)
+	if err != nil {
+		t.Fatalf("parse domain change source: %v", err)
+	}
+	out := map[string]string{} // constName -> stringValue
+	for _, decl := range f.Decls {
+		gd, ok := decl.(*ast.GenDecl)
+		if !ok || gd.Tok != token.CONST {
+			continue
+		}
+		for _, sp := range gd.Specs {
+			vs, ok := sp.(*ast.ValueSpec)
+			if !ok {
+				continue
+			}
+			// Only collect constants whose type is ChangeStatus.
+			if vs.Type == nil {
+				continue
+			}
+			ident, ok := vs.Type.(*ast.Ident)
+			if !ok || ident.Name != "ChangeStatus" {
+				continue
+			}
+			for i, name := range vs.Names {
+				if i >= len(vs.Values) {
+					continue
+				}
+				bl, ok := vs.Values[i].(*ast.BasicLit)
+				if !ok || bl.Kind != token.STRING {
+					continue
+				}
+				v, err := strconv.Unquote(bl.Value)
+				if err != nil {
+					t.Fatalf("strconv.Unquote(%q): %v", bl.Value, err)
+				}
+				out[name.Name] = v
+			}
+		}
+	}
+	return out
+}
+
+// TestChangeStatusDrift guards against drift between the two ChangeStatus
+// declarations in this repo, mirroring TestPhaseStatusDrift:
+//
+//   - pkg/contract/events.go — untyped string constants (contract layer)
+//   - internal/domain/change.go — typed ChangeStatus constants (canonical)
+//
+// The spec (sophia-wire-v1 §505) defines exactly 6 canonical ChangeStatus
+// values. Unlike PhaseStatus, ChangeStatus DOES include "failed" and "aborted"
+// — they are legitimate terminal change statuses. Any addition, removal, or
+// rename in either file is a spec violation and fails CI.
+func TestChangeStatusDrift(t *testing.T) {
+	contractVals := parseContractChangeStatusValues(t)
+	domainVals := parseDomainChangeStatusValues(t)
+
+	if len(contractVals) == 0 {
+		t.Fatal("no ChangeStatus* constants found in pkg/contract/events.go; check parseContractChangeStatusValues")
+	}
+	if len(domainVals) == 0 {
+		t.Fatal("no ChangeStatus typed constants found in internal/domain/change.go; check parseDomainChangeStatusValues")
+	}
+
+	// Canonical 6 values from sophia-wire-v1 §505.
+	canonical := map[string]struct{}{
+		"pending": {},
+		"running": {},
+		"done":    {},
+		"blocked": {},
+		"failed":  {},
+		"aborted": {},
+	}
+
+	contractValueSet := map[string]struct{}{}
+	for _, v := range contractVals {
+		contractValueSet[v] = struct{}{}
+	}
+	for v := range canonical {
+		if _, ok := contractValueSet[v]; !ok {
+			t.Errorf("contract/events.go is missing canonical ChangeStatus value %q", v)
+		}
+	}
+	for v := range contractValueSet {
+		if _, ok := canonical[v]; !ok {
+			t.Errorf("contract/events.go has extra ChangeStatus value %q not in canonical set", v)
+		}
+	}
+
+	domainValueSet := map[string]struct{}{}
+	for _, v := range domainVals {
+		domainValueSet[v] = struct{}{}
+	}
+	for v := range canonical {
+		if _, ok := domainValueSet[v]; !ok {
+			t.Errorf("internal/domain/change.go is missing canonical ChangeStatus value %q", v)
+		}
+	}
+	for v := range domainValueSet {
+		if _, ok := canonical[v]; !ok {
+			t.Errorf("internal/domain/change.go has extra ChangeStatus value %q not in canonical set", v)
+		}
+	}
+
+	// Value parity between the two files — catches same-direction drift.
+	for v := range contractValueSet {
+		if _, ok := domainValueSet[v]; !ok {
+			t.Errorf("VALUE PARITY FAIL: contract/events.go has ChangeStatus value %q but internal/domain/change.go does not", v)
+		}
+	}
+	for v := range domainValueSet {
+		if _, ok := contractValueSet[v]; !ok {
+			t.Errorf("VALUE PARITY FAIL: internal/domain/change.go has ChangeStatus value %q but contract/events.go does not", v)
+		}
+	}
+}

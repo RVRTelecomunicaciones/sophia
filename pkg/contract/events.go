@@ -57,6 +57,13 @@ const (
 	EventApplyMaterializeCompleted = "apply.materialize.completed"
 	EventApplyMaterializeError     = "apply.materialize.error"
 
+	// Apply group build verification (apply-build-feedback-loop) — NEW.
+	// Mirrors the orch group-level build gate. The fail event carries the
+	// truncated compiler stderr.
+	EventApplyBuildStarted = "apply.build.started"
+	EventApplyBuildPassed  = "apply.build.passed"
+	EventApplyBuildFailed  = "apply.build.failed"
+
 	// Memory integration — NEW.
 	EventMemoryArtifactPersistFailed = "memory.artifact_persist_failed"
 )
@@ -129,6 +136,9 @@ var knownEvents = map[string]struct{}{
 	EventApplyMaterializeStarted:          {},
 	EventApplyMaterializeCompleted:        {},
 	EventApplyMaterializeError:            {},
+	EventApplyBuildStarted:                {},
+	EventApplyBuildPassed:                 {},
+	EventApplyBuildFailed:                 {},
 	EventMemoryArtifactPersistFailed:      {},
 
 	// Section 2: CLI-only SSE protocol events (allowlisted by wire_alignment_test.go).

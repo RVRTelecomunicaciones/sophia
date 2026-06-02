@@ -7,7 +7,51 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-(empty — first changes after the v0.2.0-rc.1 cut land here)
+(empty — first changes after the v0.2.0 cut land here)
+
+---
+
+## [v0.2.0] — 2026-06-02
+
+Coordinated final release with `sophia-orchestator v0.2.0`. Both repos carry
+byte-identical `docs/specs/sophia-wire-v1.md` mirrors (SHA256
+`0c2ff06ec54b44476b358b08da857ece377dbf933ec56012accaf4457396a07c`), enforced
+by the cross-repo contract test suite. Promoted after the 7-day soak window
+(zero unresolved RED entries) plus an operator end-to-end smoke validation of
+the full stack (orch → governance → runtime → opencode → LLM → envelope).
+
+### Added
+
+- W3C Traceparent generation and emission on outbound HTTP (#1).
+- Mirror of 11 new event constants from the orchestrator (#2).
+- Cross-repo PhaseStatus drift detector (`pkg/contract/wire_alignment_test.go`)
+  enforcing the canonical 7 phase statuses across the contract and domain layers.
+- ChangeStatus drift detector, symmetric to the PhaseStatus one, enforcing the
+  canonical 6 change statuses (§505).
+- `ChangeStatusAborted` typed domain constant with terminal handling.
+- Operations guide: install + workflow + troubleshooting (#3).
+
+### Changed
+
+- Realigned the CLI ↔ orch event wire and added the cross-repo drift detector (#8).
+- Unified PhaseStatus to a single canonical definition (7 values); removed the
+  phantom `failed` phase status (it is the `phase.failed` event, not a status).
+- `runner.go` now maps failure via the `phase.failed` SSE event instead of
+  phantom phase-status literals.
+- Canonicalized the §524 phase-status set in the wire spec; re-mirrored to match
+  the orchestrator (SHA `0c2ff06…`).
+
+### Fixed
+
+- Rewired the phantom ApplyBoard to real orch `apply.*` events + inverse drift guard (#9).
+- Re-subscribe SSE when a phase is still running after a stream drop (#7).
+- Terminate the run when the observed phase reaches a terminal status (#6).
+- Auto-trigger the explore phase after change creation (#5).
+- Renamed `artifact_store` value `engram` → `memory-engine` to align with the orch enum (#4).
+
+### Removed
+
+- Deprecated `EventAgentCompleted` alias (post-#9 cleanup) (#10).
 
 ---
 

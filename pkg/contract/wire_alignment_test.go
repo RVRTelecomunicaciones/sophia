@@ -506,6 +506,14 @@ func TestApplyHandlerCoverage(t *testing.T) {
 	intentionallyIgnored := map[string]string{
 		"apply.board.save_failed": "orch persistence failure; no TUI state to update — operator sees via error bar if present",
 		"apply.worktree.error":    "infrastructure error; not per-group state — surfaced via Timeline error bar",
+		// apply-build-feedback-loop: build events are mirrored in the contract
+		// (knownEvents) so orch↔cli stay aligned, but the ApplyBoard does not
+		// yet render a dedicated build view. Group pass/fail is already shown
+		// via apply.group.completed/failed; a dedicated build-status row is a
+		// follow-up UI task. Documented-ignored until then.
+		"apply.build.started": "build verification start; group-level, no dedicated board row yet (follow-up UI)",
+		"apply.build.passed":  "build passed; group completion already surfaced via apply.group.completed",
+		"apply.build.failed":  "build failed; group failure already surfaced via apply.group.failed (stderr in event payload, follow-up UI)",
 	}
 
 	// Parse CLI constants (to resolve contract.EventApply* names → values).

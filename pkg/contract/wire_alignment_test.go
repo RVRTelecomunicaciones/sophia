@@ -514,6 +514,13 @@ func TestApplyHandlerCoverage(t *testing.T) {
 		"apply.build.started": "build verification start; group-level, no dedicated board row yet (follow-up UI)",
 		"apply.build.passed":  "build passed; group completion already surfaced via apply.group.completed",
 		"apply.build.failed":  "build failed; group failure already surfaced via apply.group.failed (stderr in event payload, follow-up UI)",
+		// apply-provider-resilience: quota/fallback/breaker events are mirrored
+		// in the contract so orch↔cli stay aligned; surfaced via the existing
+		// task/phase failure rows for now. A dedicated provider-status UI is a
+		// follow-up. Documented-ignored until then.
+		"apply.provider.quota_exceeded": "task hit provider quota; surfaced via task failure row (retry-after in payload, follow-up UI)",
+		"apply.provider.fallback_used":  "task recovered via fallback model; task completes normally, informational (follow-up UI)",
+		"apply.phase.quota_aborted":     "phase aborted by quota breaker; surfaced via phase failure/BLOCKED envelope (follow-up UI)",
 	}
 
 	// Parse CLI constants (to resolve contract.EventApply* names → values).

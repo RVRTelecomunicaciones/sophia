@@ -64,6 +64,14 @@ const (
 	EventApplyBuildPassed  = "apply.build.passed"
 	EventApplyBuildFailed  = "apply.build.failed"
 
+	// Apply provider resilience (apply-provider-resilience) — NEW.
+	// Mirrors the orch quota/rate-limit handling: a task that hit provider
+	// quota and failed fast, a task that recovered via a fallback model, and
+	// a whole apply phase aborted by the quota circuit breaker.
+	EventApplyProviderQuotaExceeded = "apply.provider.quota_exceeded"
+	EventApplyProviderFallbackUsed  = "apply.provider.fallback_used"
+	EventApplyPhaseQuotaAborted     = "apply.phase.quota_aborted"
+
 	// Memory integration — NEW.
 	EventMemoryArtifactPersistFailed = "memory.artifact_persist_failed"
 )
@@ -139,6 +147,9 @@ var knownEvents = map[string]struct{}{
 	EventApplyBuildStarted:                {},
 	EventApplyBuildPassed:                 {},
 	EventApplyBuildFailed:                 {},
+	EventApplyProviderQuotaExceeded:       {},
+	EventApplyProviderFallbackUsed:        {},
+	EventApplyPhaseQuotaAborted:           {},
 	EventMemoryArtifactPersistFailed:      {},
 
 	// Section 2: CLI-only SSE protocol events (allowlisted by wire_alignment_test.go).

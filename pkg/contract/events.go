@@ -16,6 +16,12 @@ const (
 	EventPhaseCompletedWithConcerns = "phase.completed_with_concerns"
 	EventPhaseFailed                = "phase.failed"
 	EventPhaseNeedsContext          = "phase.needs_context"
+	// EventPhaseArchived is published exactly once when a Change's archive phase
+	// reaches DONE and the Change transitions to Completed. The memory-engine
+	// consolidation worker subscribes to this event to trigger knowledge
+	// consolidation (V4.1 D13). Mirrored from sophia-orchestator; same PR as
+	// the orch constant per D-PRE-3 (wire_alignment_test enforced gate).
+	EventPhaseArchived = "phase.archived"
 
 	// Approval.
 	EventApprovalRequired = "approval.required"
@@ -120,6 +126,7 @@ var knownEvents = map[string]struct{}{
 	EventPhaseCompletedWithConcerns:       {},
 	EventPhaseFailed:                      {},
 	EventPhaseNeedsContext:                {},
+	EventPhaseArchived:                    {},
 	EventApprovalRequired:                 {},
 	EventApprovalResolved:                 {},
 	EventGovernanceDecision:               {},

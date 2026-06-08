@@ -15,6 +15,7 @@ func newInitCmd(d Deps) *cobra.Command {
 		baseRef       string
 		artifactStore string
 		force         bool
+		autoBootstrap bool
 	)
 	cmd := &cobra.Command{
 		Use:   "init",
@@ -28,6 +29,7 @@ func newInitCmd(d Deps) *cobra.Command {
 				BaseRef:       baseRef,
 				ArtifactStore: domain.ArtifactStoreMode(artifactStore),
 				Force:         force,
+				AutoBootstrap: autoBootstrap,
 			})
 			if err != nil {
 				return err
@@ -41,6 +43,8 @@ func newInitCmd(d Deps) *cobra.Command {
 	cmd.Flags().StringVar(&baseRef, "base-ref", "main", "default git ref for new Changes")
 	cmd.Flags().StringVar(&artifactStore, "artifact-store", "memory-engine", "artifact store: memory-engine | openspec | hybrid | none")
 	cmd.Flags().BoolVar(&force, "force", false, "overwrite an existing or invalid .sophia.yaml")
+	cmd.Flags().BoolVar(&autoBootstrap, "auto-bootstrap-graphify", false,
+		"If graphify is not detected, attempt `uv tool install graphifyy[mcp]==0.8.35`. Default OFF.")
 	_ = cmd.MarkFlagRequired("project")
 	return cmd
 }

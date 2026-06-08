@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"path/filepath"
 
 	"github.com/RVRTelecomunicaciones/sophia/internal/domain"
@@ -14,6 +15,11 @@ import (
 type InitializerDeps struct {
 	Git          outbound.GitInspector
 	ProjectStore outbound.ProjectConfigStore
+	// Prober detects the Graphify toolchain after .sophia.yaml is written.
+	// Optional: when nil, graphify detection is skipped silently.
+	Prober outbound.GraphifyProber
+	// Logger is used for graphify probe log messages. When nil, slog.Default() is used.
+	Logger *slog.Logger
 }
 
 // InitInput controls Run.
@@ -22,6 +28,10 @@ type InitInput struct {
 	BaseRef       string                   // empty ⇒ "main"
 	ArtifactStore domain.ArtifactStoreMode // empty ⇒ ArtifactStoreMemoryEngine
 	Force         bool
+	// AutoBootstrap mirrors the --auto-bootstrap-graphify CLI flag. When true
+	// and Probe returns Available=false, Bootstrap is called once.
+	// Default: false (degraded-first per V4.1 §7-ter.7).
+	AutoBootstrap bool
 }
 
 // InitResult reports what Run did.
@@ -79,5 +89,42 @@ func (i *Initializer) Run(ctx context.Context, in InitInput) (InitResult, error)
 	if err := i.deps.ProjectStore.Write(ctx, path, cfg); err != nil {
 		return InitResult{}, fmt.Errorf("write: %w", err)
 	}
+
+	// Graphify toolchain probe — runs AFTER .sophia.yaml is written (degraded-first).
+	// When Prober is nil the feature is simply absent; no error.
+	if i.deps.Prober != nil {
+		i.probeGraphify(ctx, in.AutoBootstrap)
+	}
+
 	return InitResult{Path: path, RepoRoot: root}, nil
+}
+
+// probeGraphify runs the Graphify probe and optionally bootstraps the toolchain.
+// It NEVER returns an error — degraded mode is non-fatal per V4.1 §7-ter.7.
+func (i *Initializer) probeGraphify(ctx context.Context, autoBootstrap bool) {
+	log := i.deps.Logger
+	if log == nil {
+		log = slog.Default()
+	}
+
+	result, err := i.deps.Prober.Probe(ctx)
+	if err != nil {
+		log.Warn("graphify probe failed; INIT will run in degraded mode", "err", err)
+		return
+	}
+
+	if result.Available {
+		log.Info("graphify detected", "version", result.Version)
+		return
+	}
+
+	// Graphify not available.
+	log.Warn("graphify not detected; INIT will run in degraded mode",
+		"missing_deps", result.MissingDeps)
+
+	if autoBootstrap {
+		if bErr := i.deps.Prober.Bootstrap(ctx); bErr != nil {
+			log.Warn("graphify auto-bootstrap failed", "err", bErr)
+		}
+	}
 }

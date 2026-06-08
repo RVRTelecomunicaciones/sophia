@@ -11,9 +11,9 @@ import (
 
 // fakeGraphifyProber is a test double for outbound.GraphifyProber.
 type fakeGraphifyProber struct {
-	ProbeResult outbound.ProberResult
-	ProbeErr    error
-	BootstrapFn func(ctx context.Context) error
+	ProbeResult        outbound.ProberResult
+	ProbeErr           error
+	BootstrapFn        func(ctx context.Context) error
 	BootstrapCallCount int
 }
 
@@ -32,7 +32,6 @@ func (f *fakeGraphifyProber) Bootstrap(ctx context.Context) error {
 func newInitWithProber(prober outbound.GraphifyProber) (
 	*application.Initializer,
 	*fakes.FakeGitInspector,
-	*fakes.FakeProjectConfigStore,
 ) {
 	git := fakes.NewFakeGitInspector()
 	store := fakes.NewFakeProjectConfigStore()
@@ -41,7 +40,7 @@ func newInitWithProber(prober outbound.GraphifyProber) (
 		ProjectStore: store,
 		Prober:       prober,
 	})
-	return init, git, store
+	return init, git
 }
 
 // A.6 — Prober returns Available=true: Initializer logs INFO, does NOT call Bootstrap.
@@ -49,7 +48,7 @@ func TestInitializer_Run_GraphifyAvailable_NoBootstrap(t *testing.T) {
 	prober := &fakeGraphifyProber{
 		ProbeResult: outbound.ProberResult{Available: true, Version: "0.8.35"},
 	}
-	init, git, _ := newInitWithProber(prober)
+	init, git := newInitWithProber(prober)
 	git.Root = "/repo"
 
 	_, err := init.Run(context.Background(), application.InitInput{
@@ -73,7 +72,7 @@ func TestInitializer_Run_AutoBootstrap_Success(t *testing.T) {
 		},
 		BootstrapFn: func(_ context.Context) error { return nil },
 	}
-	init, git, _ := newInitWithProber(prober)
+	init, git := newInitWithProber(prober)
 	git.Root = "/repo"
 
 	_, err := init.Run(context.Background(), application.InitInput{
@@ -96,7 +95,7 @@ func TestInitializer_Run_Degraded_NoBootstrap(t *testing.T) {
 			MissingDeps: []string{"graphify"},
 		},
 	}
-	init, git, _ := newInitWithProber(prober)
+	init, git := newInitWithProber(prober)
 	git.Root = "/repo"
 
 	_, err := init.Run(context.Background(), application.InitInput{

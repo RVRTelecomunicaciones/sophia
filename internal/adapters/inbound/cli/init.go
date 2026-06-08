@@ -11,11 +11,11 @@ import (
 
 func newInitCmd(d Deps) *cobra.Command {
 	var (
-		project           string
-		baseRef           string
-		artifactStore     string
-		force             bool
-		autoBootstrap     bool
+		project       string
+		baseRef       string
+		artifactStore string
+		force         bool
+		autoBootstrap bool
 	)
 	cmd := &cobra.Command{
 		Use:   "init",
